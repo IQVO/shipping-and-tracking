@@ -31,7 +31,8 @@ const (
 	TypePackageOutForDelivery   = "com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery"
 	TypeDeliveryAttempted       = "com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted"
 	// The entity segment of PackageReturnInitiated is last-mile-delivery's
-	// choice (ADR 0003): both likely strings are handled.
+	// choice (ADR 0003): the pushed AsyncAPI says packageattempthistory; the
+	// route spelling is a tolerated alias.
 	TypePackageReturnInitiated        = "com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated"
 	TypePackageReturnInitiatedOnRoute = "com.retailnetwork.logistics.last-mile-delivery.route.PackageReturnInitiated"
 	TypeCatalogItemCreated            = "com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated"

@@ -9,9 +9,10 @@ Accepted (2026-10-23).
 shipping-and-tracking folds facts from four producers into one timeline and prints labels from an
 address it must fetch. The model lists six consumed events, one synchronous call (`GetShipTo`) and the
 relationships below. contracts-delta E3, E10, E15 and E16 add shapes. Producers' AsyncAPI files are read
-from their repos when pushed (`git show origin/feature/service:apis/asyncapi.yaml`); at the time of writing
-none of the four had one, so the consumed shapes are the model's fields, the contracts-delta additions and
-the wire conventions. Each consumer vendors a tolerant local copy of what it uses and ignores unknown fields.
+from their repos when pushed (`git show origin/feature/service:apis/asyncapi.yaml`); the four producers'
+files were re-read on 2026-10-23 and the consumed types and fields below match them (`DeliveryAttempted.outcome`
+is `DELIVERED` or `FAILED`; every other value is a failed attempt; `LoadDeparted`/`LoadArrived` carry `departureKind`
+and `nodeType`; `PackageReturnInitiated` is published by the `packageattempthistory` entity). Each consumer vendors a tolerant local copy of what it uses and ignores unknown fields.
 
 ## Decision
 
@@ -30,9 +31,8 @@ CloudEvents `type`, deduplicated on the CloudEvents `id` in `processed_events` (
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated` (also accepted: `com.retailnetwork.logistics.last-mile-delivery.route.PackageReturnInitiated`) | `trackingNumber` | `ReturnToSender` |
 | offer-availability (Conformist) | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | upsert `catalog_dimensions` |
 
-The entity segment of `PackageReturnInitiated` is last-mile-delivery's choice (the model names no
-publisher aggregate for it); both likely strings are registered and the right one is confirmed when
-last-mile-delivery pushes its AsyncAPI (a model gap in the final report). Types not in the table are
+The entity segment of `PackageReturnInitiated` is `packageattempthistory` in last-mile-delivery's pushed
+AsyncAPI; the `route` spelling is kept as a tolerated alias. Types not in the table are
 acknowledged and ignored.
 
 ### Tolerant decoding and failure handling
