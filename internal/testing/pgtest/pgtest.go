@@ -29,6 +29,11 @@ const (
 	templateName = "shipping_template"
 )
 
+// Pool is the pgx pool type the helpers hand out, so an integration test can
+// name it without importing pgx itself (the testcontainers sensor of
+// internal/architecture looks for the container helper in the package).
+type Pool = pgxpool.Pool
+
 var (
 	once      sync.Once
 	container *tcpostgres.PostgresContainer
