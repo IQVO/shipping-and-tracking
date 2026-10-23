@@ -13,6 +13,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/claudioed/shipping-and-tracking/internal/application/outbox"
 	"github.com/claudioed/shipping-and-tracking/internal/application/repository"
 	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/journey"
@@ -123,4 +124,11 @@ type ShipToSealer interface {
 // StopKeyer derives the opaque stopKey from the normalized address.
 type StopKeyer interface {
 	StopKey(normalized string) string
+}
+
+// EventEncoder is what the Postgres outbox adapter needs to turn domain events
+// into stored messages: one already-encoded outbox message per event, in order,
+// with the CloudEvents id minted once (internal/adapters/outbound/kafka).
+type EventEncoder interface {
+	Encode(events ...shared.Event) ([]outbox.Message, error)
 }
