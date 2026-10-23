@@ -55,12 +55,13 @@ type world struct {
 	gateway *memory.ShipToGateway
 	deps    usecases.Deps
 
-	lastErr   error
-	lastLabel views.Label
-	trackings []shared.TrackingNumber // tracking numbers issued, in order
-	labels    []string                // label refs issued, in order
-	sweep     usecases.SweepResult
-	loadEvent usecases.ApplyScansCmd
+	lastErr     error
+	lastLabel   views.Label
+	lastJourney views.Journey
+	trackings   []shared.TrackingNumber // tracking numbers issued, in order
+	labels      []string                // label refs issued, in order
+	sweep       usecases.SweepResult
+	loadEvent   usecases.ApplyScansCmd
 }
 
 func newWorld() *world {
@@ -476,4 +477,6 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the two labels have different tracking numbers$`, w.twoDifferentTrackingNumbers)
 	sc.Step(`^both journeys are "([A-Z_]+)"$`, w.bothJourneysAre)
 	sc.Step(`^the sweep raised (\d+) exceptions and declared (\d+) packages lost$`, w.sweepResult)
+
+	registerOpenHostSteps(sc, w)
 }
