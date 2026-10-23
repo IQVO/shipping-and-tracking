@@ -117,9 +117,10 @@ HANDED_OVER`; `PackageDelivered` on `to DELIVERED`; `PackageExceptionRaised`; `P
 - **A15 (concurrency).** Each aggregate carries `version`; a save expects `stored = version - 1` and a
   mismatch is `ErrConcurrentUpdate` (409). Consumers and the sweep reload and retry up to 3 times.
 - **A16 (multi-package events).** One `LoadDeparted` / `LoadArrived` / `VendorShipmentConfirmed` names many
-  tracking numbers. Each becomes one scan with `scanId = <CloudEvents id>:<trackingNumber>` and one
-  transaction per journey. The inbox row is written after the last journey; a redelivery after a crash
-  re-runs every journey and `ErrDuplicateScan` makes the repeats no-ops.
+  tracking numbers. Each becomes one scan with `scanId = <CloudEvents id>:<trackingNumber>`. The whole event
+  is handled in ONE transaction that claims the CloudEvents `id` in `processed_events` first and then
+  applies every scan; an `ErrConcurrentUpdate` retries the whole event. A redelivery after a crash finds the
+  claim and skips; `ErrDuplicateScan` per scan is the second line of defence.
 - **A17 (unknown tracking number).** A consumed fact for a tracking number with no journey is logged and
   counted, then acknowledged (the package may belong to a flow this service did not label).
 - **A18 (CatalogDimensionsView).** `CatalogItemCreated` is upserted into `catalog_dimensions`; no command

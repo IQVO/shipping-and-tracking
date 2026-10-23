@@ -88,3 +88,28 @@ func TestValidIDNHonoursTheCallerLimit(t *testing.T) {
 		t.Fatalf("ValidID must keep its %d character bound", MaxID)
 	}
 }
+
+func TestTierValid(t *testing.T) {
+	for _, tc := range []struct {
+		tier Tier
+		want bool
+	}{
+		{TierSameDay, true}, {TierNextDay, true}, {TierTwoDay, true}, {TierStandard, true},
+		{"", false}, {"same_day", false}, {"EXPRESS", false},
+	} {
+		if got := tc.tier.Valid(); got != tc.want {
+			t.Errorf("Tier(%q).Valid() = %v, want %v", tc.tier, got, tc.want)
+		}
+	}
+}
+
+func TestTrackingNumberValid(t *testing.T) {
+	if !TrackingNumber("RN0123456789ABCDEF").Valid() {
+		t.Error("a well-formed tracking number must be valid")
+	}
+	for _, bad := range []TrackingNumber{"", " x", "a b", TrackingNumber(strings.Repeat("A", MaxID+1))} {
+		if bad.Valid() {
+			t.Errorf("TrackingNumber(%q) must be invalid", bad)
+		}
+	}
+}

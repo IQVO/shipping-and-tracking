@@ -130,3 +130,29 @@ func UTC(t time.Time) time.Time {
 	}
 	return t.UTC()
 }
+
+// Tier is the service tier of a package (the delivery promise it was sold under).
+type Tier string
+
+// The four service tiers.
+const (
+	TierSameDay  Tier = "SAME_DAY"
+	TierNextDay  Tier = "NEXT_DAY"
+	TierTwoDay   Tier = "TWO_DAY"
+	TierStandard Tier = "STANDARD"
+)
+
+// Valid reports whether t is one of the four tiers.
+func (t Tier) Valid() bool {
+	switch t {
+	case TierSameDay, TierNextDay, TierTwoDay, TierStandard:
+		return true
+	}
+	return false
+}
+
+// TrackingNumber is the network-wide unique id of one package (journey root).
+type TrackingNumber string
+
+// Valid reports whether n is a well-formed tracking number (an opaque id).
+func (n TrackingNumber) Valid() bool { return ValidID(string(n)) }
