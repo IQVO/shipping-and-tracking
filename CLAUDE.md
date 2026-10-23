@@ -39,4 +39,5 @@ ADRs, specs, tests, fixtures or the README.
 - Contract first: `apis/openapi.yaml` and `apis/asyncapi.yaml`, then ADR 0004's type catalogue in the same commit, then code.
 - A new consumed type is written into ADR 0003 (`TestConsumedTypesAreDocumented`).
 - Shared `repocontract` tests run against both the memory doubles and Postgres; add a case there, not in one adapter.
-- Not built: the Helm chart, traces and metrics, ship-to key rotation (ADR 0005, `docs/before-first-release.md`).
+- Chart: `charts/shipping-and-tracking/` (api only; tests in `charts/shipping-and-tracking/tests/`, run by the `chart-tests` and `helm-lint` CI jobs). A new env var in `cmd/api` must be rendered by the chart or `render_test.sh` fails.
+- Not built: traces and metrics, ship-to key rotation (ADR 0005, `docs/before-first-release.md`).

@@ -1,0 +1,187 @@
+# Default values for shipping-and-tracking. One component: the api Deployment
+# (cmd/api: HTTP, outbox relay, four Kafka consumers and the periodic jobs).
+
+replicaCount: 1
+
+# The same image carries /app/api (the only binary this chart runs).
+image:
+  repository: warehouse/shipping-and-tracking
+  pullPolicy: IfNotPresent
+  tag: "local"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+# The image runs as uid/gid 1000 and writes nothing to disk (migrations are
+# embedded, logs go to stdout), so the root filesystem is read-only.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: shipping-and-tracking.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Additive, disabled-by-default alternative to ingress. Routes only to the api
+# Service.
+gatewayApi:
+  enabled: false
+  parentRefs:
+    - name: ""
+      namespace: ""
+      sectionName: "http"
+  hosts:
+    - path: /
+      pathType: PathPrefix
+  stripPath: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# HorizontalPodAutoscaler for the api Deployment, off by default. When on, the
+# Deployment omits replicas. More than one replica is safe by design (outbox
+# relay claims rows with SKIP LOCKED, stable consumer groups, inbox dedupe in
+# the handler transaction) but has not been load-tested.
+autoscaling:
+  api:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+# Environment read by cmd/api (cmd/api/config.go). Every key maps 1:1 to one
+# env var; tests/render_test.sh asserts that every variable the binary reads is
+# rendered. Nothing secret lives here: the ConfigMap is not for DSNs, the
+# ship-to encryption key or the stopKey secret (see database: and crypto:).
+config:
+  httpAddr: ":8080"                  # HTTP_ADDR
+  logLevel: "info"                   # LOG_LEVEL: debug | info | warn | error
+  # EVENT_PUBLISHER: "kafka" is the only publisher; the outbox relay always
+  # runs. The key stays because the deployment sets it; "log" is refused at
+  # render and by the binary at boot.
+  eventPublisher: "kafka"
+  # CUSTOMER_ORDERING_URL: base URL of customer-ordering (GetShipTo over
+  # HTTP). REQUIRED. Not a secret and not PII; the ship-to the call returns is
+  # synthetic personal data and is never logged or stored in clear.
+  customerOrderingUrl: ""
+  # CUSTOMER_ORDERING_TIMEOUT: one GetShipTo call, Go duration or seconds.
+  # Empty = not rendered; the binary defaults to 3s.
+  customerOrderingTimeout: ""
+  # The four consumers' STABLE group ids (service-prefixed, never the pod name),
+  # so a rescheduled pod resumes from its committed offsets. ALL REQUIRED:
+  # an empty one fails the render and the binary refuses to boot.
+  vendorConsumerGroup: ""            # VENDOR_CONSUMER_GROUP
+  linehaulConsumerGroup: ""          # LINEHAUL_CONSUMER_GROUP
+  lastmileConsumerGroup: ""          # LASTMILE_CONSUMER_GROUP
+  catalogConsumerGroup: ""           # CATALOG_CONSUMER_GROUP
+  # OUTBOX_RELAY_INTERVAL: Go duration or seconds. Empty = not rendered (1s).
+  outboxRelayInterval: ""
+  # OUTBOX_MAX_ATTEMPTS: failures before the relay excludes a row; 0 = unlimited.
+  outboxMaxAttempts: 20
+  # SILENCE_SWEEP_INTERVAL: exception-on-silence sweep period. Empty = 5m.
+  silenceSweepInterval: ""
+  # HOUSEKEEPING_INTERVAL: ship-to and technical-table purge period. Empty = 1h.
+  housekeepingInterval: ""
+  # SHUTDOWN_DRAIN_DELAY: wait after /readyz flips before closing the listener.
+  # Whole seconds only ("5s", "5", "0"): the chart adds it to the grace period
+  # floor below.
+  shutdownDrainDelay: "5s"
+
+# The chart refuses to render unless database.url or database.existingSecret is
+# set. DATABASE_URL always comes from a Secret (secretKeyRef).
+database:
+  url: ""
+  existingSecret: ""
+  existingSecretKey: "DATABASE_URL"
+  # Key, in the same Secret, of a DIRECT (non-pooled) connection string used
+  # only for the boot migrations. optional: true on the secretKeyRef, so a
+  # Secret without the key still starts the pod (the binary falls back to
+  # DATABASE_URL).
+  migrationsExistingSecretKey: "MIGRATIONS_DATABASE_URL"
+
+# The ship-to snapshot key (SHIP_TO_ENCRYPTION_KEY: base64 of 32 bytes) and the
+# stopKey HMAC secret (STOP_KEY_SECRET: at least 16 bytes). Both REQUIRED, both
+# from a Secret: crypto.existingSecret, or both inline values (the chart then
+# creates the Secret). Never in the ConfigMap, never in a log.
+crypto:
+  existingSecret: ""
+  shipToEncryptionKeyKey: "SHIP_TO_ENCRYPTION_KEY"
+  stopKeySecretKey: "STOP_KEY_SECRET"
+  shipToEncryptionKey: ""
+  stopKeySecret: ""
+
+# KAFKA_BROKERS is MANDATORY (relay, consumers, /readyz); comma-separated.
+kafka:
+  brokers: ""
+
+# Extra env vars appended to the api container as a raw list. The chart refuses
+# EVENT_PUBLISHER other than "kafka" and any *_MODE variable here.
+extraEnv: []
+
+# The Postgres dial at boot is wrapped in a bounded retry; periodSeconds *
+# failureThreshold is the window before the kubelet gives up.
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 2
+  failureThreshold: 30
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 3
+  periodSeconds: 5
+
+# Shutdown is sequential (cmd/api/main.go): SHUTDOWN_DRAIN_DELAY (default 5s) +
+# HTTP drain bound 10s + consumers and jobs drain bound 10s + outbox relay
+# drain bound 10s = 35s with the default delay. The chart refuses a grace
+# period that is not GREATER than 30s + the drain delay.
+terminationGracePeriodSeconds: 45
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
