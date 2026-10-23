@@ -49,6 +49,8 @@ paths:
             schema:
               $ref: '#/components/schemas/IssueLabelRequest'
       responses:
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyRequired'
         '201':
           description: Label issued (or replayed for a known Idempotency-Key).
           content:
@@ -94,6 +96,8 @@ paths:
             schema:
               $ref: '#/components/schemas/VoidLabelRequest'
       responses:
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyRequired'
         '200':
           description: Label voided (or already voided).
           content:
@@ -152,6 +156,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RecordScanRequest'
       responses:
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyRequired'
         '200':
           description: Scan applied; the journey after the scan.
           content:
@@ -191,6 +197,12 @@ components:
       schema:
         type: string
   responses:
+    IdempotencyKeyRequired:
+      description: idempotency-key-required. The Idempotency-Key header is missing.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     ValidationFailed:
       description: validation-failed. The request is well-formed JSON but violates a value rule.
       content:

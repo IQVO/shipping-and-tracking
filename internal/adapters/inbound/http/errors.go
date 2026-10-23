@@ -23,16 +23,17 @@ type problem struct {
 	title  string
 }
 
-// validationFailed is the one problem of a rejected request: the contract has
-// no 400, a malformed body or a bad Idempotency-Key is 422 validation-failed
-// (apis/openapi.yaml, ADR 0002 A24); the detail says which.
+// validationFailed is the one problem of a rejected request: a malformed body,
+// an Idempotency-Key that is too long and a key reused with another body are
+// 422 validation-failed (apis/openapi.yaml, ADR 0002 A24); the detail says
+// which. A MISSING key is the one 400 (the fleet rule, idempotency-key-required).
 var validationFailed = problem{http.StatusUnprocessableEntity, "validation-failed", "Validation failed"}
 
 var internalProblem = problem{http.StatusInternalServerError, "internal-error", "Internal server error"}
 
 // Problems the idempotency middleware writes itself, before any use case runs.
 var (
-	idempotencyKeyRequired = validationFailed
+	idempotencyKeyRequired = problem{http.StatusBadRequest, "idempotency-key-required", "Idempotency-Key header is required"}
 	idempotencyKeyInvalid  = validationFailed
 	idempotencyKeyReused   = validationFailed
 )

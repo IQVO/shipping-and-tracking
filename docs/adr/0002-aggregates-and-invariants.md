@@ -139,7 +139,8 @@ HANDED_OVER`; `PackageDelivered` on `to DELIVERED`; `PackageExceptionRaised`; `P
 - **A23 (scanId).** An event-derived `scanId` (A16) makes redelivery idempotent; REST callers choose their
   own `scanId`, unique per journey.
 - **A24 (idempotency keys).** `idempotency_keys(route, key)` with a 24 hour TTL, replayed on the same
-  body; a key reused with another body answers 422 `validation-failed`.
+  body; a key reused with another body answers 422 `validation-failed`; a missing key answers 400
+  `idempotency-key-required` (the fleet rule).
 - **A25 (bounds).** `packageNo` is 1 to 2147483647; texts are bounded (ids 128, reason 500).
 - **A26 (journey tier).** The journey copies `tier` from the label so the sweep needs no join.
 - **A27 (handover fields).** `PackageHandedOver.nodeId` is the origin node of the pickup departure and

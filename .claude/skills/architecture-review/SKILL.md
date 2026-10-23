@@ -27,26 +27,20 @@ check a design decision against this fleet's standing architecture.
 2. **Customer/Supplier direction, per `.claude/rules/domain-model.md`
    (or this repo's equivalent doc).** A new outbound call to a sibling
    context must go the direction ADRs already established — check
-   `docs/docs/adr/` for the relevant context-mapping ADR before assuming
+   `docs/adr/` for the relevant context-mapping ADR before assuming
    a new integration is fine. Flag any outbound call added to a context
    this repo doesn't already integrate with; that's a new architectural
    decision that needs its own ADR, not a code change slipped in
    silently.
-3. **MCP additive-boundary rule (ADR-0008 fleet-wide).** A change under
-   `internal/adapters/inbound/mcp/` must depend only on
-   application/domain, and nothing else in the codebase may depend on
-   it. If this repo has a `TestMCPAdapterDependencyRule` fitness test,
-   confirm it's green; if not, check by eye.
-2b. **Zero-write guardrails, where applicable.** If this repo has a
-   documented zero-write constraint (e.g. warehouse-ops-agent v1), check
-   no mutating HTTP method or MCP tool without `ReadOnlyHint: true` was
-   added to an outbound/inbound surface bound by that constraint.
-4. **Analytics isolation (ADR-0006-style, where this repo has an
-   `internal/analytics/` read side).** The OLTP domain/application layers
-   must never import the analytics store or read model; the analytics
-   side must depend on nothing internal except itself. This is a real,
-   already-fitness-tested rule in most repos — confirm the test exists
-   and is green rather than re-deriving it by eye if possible.
+3. **No MCP surface and no analytics read side here.** This service
+   exposes REST only (`internal/adapters/inbound/http`) and consumes Kafka
+   (`internal/adapters/inbound/kafka`); flag any new inbound adapter
+   directory as a new architectural decision that needs an ADR.
+4. **Ship-to isolation (ADR 0002 A9, ADR 0005).** The address exists only
+   as an encrypted snapshot behind `internal/application/shipto`; flag any
+   diff that logs, publishes or returns an address, or adds an address
+   field to `apis/openapi.yaml` or `apis/asyncapi.yaml`
+   (`TestContractsCarryNoShipToField` guards the contracts).
 5. **Kafka consumer-group pattern correctness.** A new Kafka consumer
    must use either (a) a named long-lived constant for a genuinely
    single-instance consumer, or (b) a per-process-unique generated group

@@ -94,7 +94,7 @@ func TestIdempotencyReplaysTheFirstResponseAndRejectsADifferentBody(t *testing.T
 
 func TestIdempotencyKeyIsRequiredBoundedAndScopedPerRoute(t *testing.T) {
 	srv, _, _ := pgServer(t)
-	if code, body := post(t, srv, "/labels", "", issueBody); code != 422 || !strings.Contains(body, "validation-failed") || !strings.Contains(body, "Idempotency-Key") {
+	if code, body := post(t, srv, "/labels", "", issueBody); code != 400 || !strings.Contains(body, "idempotency-key-required") {
 		t.Fatalf("missing key = %d %s", code, body)
 	}
 	if code, body := post(t, srv, "/labels", strings.Repeat("k", 129), issueBody); code != 422 || !strings.Contains(body, "128") {

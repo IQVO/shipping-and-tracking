@@ -3,7 +3,6 @@ name: how-to-add-an-integration-event
 description: Publish or consume a cross-service Kafka event: CloudEvents 1.0 type naming, AsyncAPI, transactional outbox, consumer-group rules. Use when touching internal/adapters kafka or outbox code, a publisher/consumer, or apis/asyncapi*.yaml.
 ---
 
-<!-- TEMPLATE NOTE (warehouse-harness-template v2): adapt every repo-specific example in this file (file paths, type names, field names) to THIS repo real code. Do not copy-paste verbatim. -->
 
 # How to add an integration event (publish and consume)
 
@@ -16,15 +15,12 @@ shared-broker reality has already caused a real incident once.
 
 ### 1. Is it actually cross-service?
 
-Not every domain event this service raises belongs on the wire. Check
-`internal/adapters/outbound/kafka/publisher.go`'s doc comment — this repo
-forwards only `StockReserved`/`ReservationRevoked`; everything else is a
-local concern published only to the Postgres outbox
-(`internal/adapters/outbound/postgres/event_publisher.go`) for audit, not
-broadcast. Before adding a new event to the Kafka publisher, confirm a
-sibling context genuinely needs to react to it — check
-`docs/docs/ddd/context-map.md` or the equivalent ubiquitous-language doc
-for who's actually downstream.
+Not every domain event this service raises belongs on the wire. Here every
+domain event of the two aggregates is an integration event (the model marks
+none analytics-only), written to the Postgres outbox in the use case's
+transaction and relayed to `retailnetwork.shipping-and-tracking.events`.
+Before adding a new one, confirm in retail-network-docs `model/model.yaml`
+that the model publishes it and that a sibling context needs it.
 
 ### 2. Envelope: CloudEvents 1.0, structured mode — MANDATORY
 
@@ -44,42 +40,41 @@ shape, no dual-write, no `EVENT_ENVELOPE_MODE` toggle (see
   "subject": "<aggregate id>",
   "time": "<domain occurred-at, RFC3339 UTC>",
   "datacontenttype": "application/json",
-  "dataschema": "urn:warehouse:<repo>:events:<EventName>:v1",
+  "dataschema": "urn:retailnetwork:shipping-and-tracking:events:<EventName>:v1",
   "data": { "the": "actual payload, business types only" }
 }
 ```
 
-`type` follows the platform-wide reverse-DNS convention
-`com.warehouse.<subdomain>.<bounded-context>.<entity>.<EventName>`, all
-lowercase except the final PascalCase event name — e.g.
-`com.warehouse.wms.inventory-storage.reservation.ReservationRevoked`. Take
-the subdomain/context segment from the subdomain table on warehouse-docs'
-Event Standard page (`docs/strategic-design/event-standard-cloudevents.md`);
-don't guess it. The same `type` is used on the analytics topic; only
-`dataschema` changes (`…:analytics:<EventName>:v1`).
+`type` follows the retail-network reverse-DNS convention
+`com.retailnetwork.<tier>.<bounded-context>.<entity>.<EventName>`, all
+lowercase except the final PascalCase event name — here
+`com.retailnetwork.logistics.shipping-and-tracking.journey.PackageLost`
+(entity `label` or `journey`). Write the full string into ADR 0004 in the
+same commit as `apis/asyncapi.yaml` (`TestEventCatalogueMatchesContract`).
 
 ### 3. Implementation
 
-Add the event struct to `internal/domain/<aggregate>/` (it should already
-exist as a domain event the aggregate raises — publishing wires an
-EXISTING domain event onto Kafka, it doesn't invent a new payload shape at
-the adapter layer). In the Kafka publisher adapter:
+Add the event struct to `internal/domain/<label|journey>/events.go` (the
+aggregate raises it; the adapter never invents a payload shape). Then add a
+case to `internal/adapters/outbound/kafka/encoder.go`, which implements
+`ports.EventEncoder`. The use cases call `publish` inside the unit of work;
+only the relay talks to Kafka. In the encoder:
 
 - Encode ONLY through `internal/adapters/kafka/cloudevents` (copied from
   this template's `templates/cloudevents/cloudevents.go.tmpl`):
   ```go
   value, err := cloudevents.New(cloudevents.Spec{
       ID:        evt.ID(),            // minted once; the outbox row stores it
-      Entity:    "reservation",
-      EventName: "ReservationRevoked",
-      Subject:   evt.ReservationID(),
+      Entity:    "journey",
+      EventName: "PackageLost",
+      Subject:   string(evt.TrackingNumber),
       Time:      evt.OccurredAt(),
       Stream:    cloudevents.StreamEvents,
       Version:   1,
       Data:      payload,              // unchanged wire payload
   })
   msg := kafkago.Message{
-      Key:     []byte(evt.ReservationID()),
+      Key:     []byte(evt.TrackingNumber),
       Value:   value,
       Headers: append(traceHeaders, cloudevents.ContentTypeHeader()),
   }
@@ -87,7 +82,7 @@ the adapter layer). In the Kafka publisher adapter:
 - Give the message a partition key that keeps ordering where it matters
   (the aggregate id) and keep the `kafkago.Hash{}` balancer
 - Use `Topic` — this service's own topic constant
-  (`warehouse.<context>.events`), never a sibling's
+  (`retailnetwork.shipping-and-tracking.events`), never a sibling's
 
 ### 4. Contract + docs
 
@@ -96,13 +91,9 @@ the adapter layer). In the Kafka publisher adapter:
   CloudEvents envelope schema with every attribute required), with its
   exact `type` const and `dataschema`, matching the entity-grouping
   convention already there (group by aggregate, not chronologically)
-- Regenerate the AsyncAPI HTML reference:
-  ```bash
-  cd docs && npm run gen-async-docs:all   # or gen-async-docs, check package.json
-  ```
-  This repo's `docs-api-drift` CI job fails the PR if the generated
-  `static/asyncapi/<ctx>/` output doesn't match a fresh regen — a nullable
-  field change here has bitten before.
+- Lint it: `npx --yes @stoplight/spectral-cli lint apis/asyncapi.yaml --ruleset .spectral.asyncapi.yaml`, and add the
+  `type:` line of a new published type to `docs/adr/0004-cloudevents-envelope-and-type-catalogue.md` in the same commit
+  (`TestEventCatalogueMatchesContract`).
 
 ### 5. Test
 
@@ -120,10 +111,8 @@ hardcoded `localhost:9092` fails CI).
 ### 1. Never import the sibling's Go packages
 
 This service knows a sibling's topic name, its exact CloudEvents `type`
-strings and payload shape ONLY — never its Go types. See `internal/adapters/outbound/facilitycache/consumer.go`'s
-own doc comment: "This service has no business knowing anything else
-about that context beyond this topic name and the envelope/payload shapes
-below." Hand-mirror the payload struct locally; do not add a Go module
+strings and payload shape ONLY — never its Go types. See `internal/adapters/inbound/kafka/handlers.go`, which hand-mirrors
+each consumed payload and knows only the topic and the envelope shape Hand-mirror the payload struct locally; do not add a Go module
 dependency on the sibling repo (an architecture fitness test in most
 repos in this fleet would catch that anyway for the stricter contexts —
 check this repo's own `internal/architecture/` for a
@@ -170,8 +159,8 @@ EXACTLY what you want: pick up where the single instance left off.
 **Pattern B — per-process-unique consumer group (a generated id).** Use
 when this consumer rebuilds a complete read model from a topic's FULL
 history on every start (an event-sourced local cache, not a work queue) —
-see `facilitycache/consumer.go`'s `consumerGroupPrefix` +
-`uniqueConsumerGroup()`. The group id MUST be unique per process instance
+NOT used by this service (its four consumers are work queues with
+configured, stable groups: `VENDOR_`, `LINEHAUL_`, `LASTMILE_`, `CATALOG_CONSUMER_GROUP` in `cmd/api/config.go`). The group id MUST be unique per process instance
 (hostname+PID+timestamp), NEVER a fixed shared string. Consumer group
 offsets are shared infrastructure state: a brand-new process joining a
 group an EARLIER instance already consumed resumes from that instance's

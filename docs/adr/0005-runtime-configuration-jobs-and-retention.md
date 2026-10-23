@@ -64,9 +64,9 @@ conflict, seen again on the next tick), and the purges are idempotent deletes.
 The key is scoped per route (`idempotency_keys` primary key `(route, key)`). All three POST routes require it.
 The middleware stores the response in the same transaction as the work, so a replay returns the first answer
 byte for byte. Responses below 500 are cached, with one exception: a `concurrent-update` 409 is not (it is
-retryable, so replaying it would pin a transient conflict). A key reused with another body, a missing key, a key
-longer than 128 characters and a malformed body are all 422 `validation-failed` (the contract has no 400; ADR
-0002 A24).
+retryable, so replaying it would pin a transient conflict). A MISSING key is 400 `idempotency-key-required` (the fleet
+rule); a key reused with another body, a key longer than 128 characters and a malformed body are 422
+`validation-failed` (ADR 0002 A24).
 
 ### Not built
 
