@@ -12,9 +12,9 @@ this order — domain first, adapter last — never the reverse; writing the
 HTTP handler before the domain invariant it enforces produces handlers
 that validate nothing and use cases that get bypassed.
 
-This walks the exact path `POST /bins/{binId}/cycle-count` took
-(`internal/application/usecases/run_cycle_count.go` +
-`internal/adapters/inbound/http/server.go`'s `handleRunCycleCount`) as the
+This walks the exact path `POST /labels/{labelRef}:void` took
+(`internal/application/usecases/labels.go` +
+`internal/adapters/inbound/http/handlers.go`'s `handleVoidLabel`) as the
 concrete worked example — read those two files alongside this guide.
 
 ## 1. Domain first: does an invariant already exist, or do you need one?
@@ -93,26 +93,20 @@ Write at least one httptest per endpoint: one success path, one error
 path (validation failure AND/OR the domain-rule failure, whichever this
 endpoint can produce).
 
-## 4. Contract: update OpenAPI, then regenerate docs
+## 4. Contract: update OpenAPI
 
 Add the path to `apis/openapi.yaml` (request/response schemas, the RFC
-7807 problem-detail response for each error case — see the existing
-`/bins/{binId}/cycle-count` entry for the shape).
+9457 problem-detail response for each error case — see the existing
+`/labels/{labelRef}:void` entry for the shape).
 
-Regenerate the Docusaurus REST reference — this repo's `docs-api-drift`
-CI job fails the PR if you skip this:
-
-```bash
-cd docs
-npm run clean-api-docs   # or the repo's own script name — check package.json
-npm run gen-api-docs
-```
+Lint it: `npx --yes @stoplight/spectral-cli lint apis/openapi.yaml --ruleset .spectral.yaml` (the `api-lint` CI job
+runs the same). Every error slug in the spec is a problem `type` the handler really returns.
 
 ## 5. Behaviour: add a godog scenario
 
 If this endpoint is user-facing behaviour (not purely internal
 plumbing), add a `.feature` file under `features/` exercising it
-end-to-end against the real HTTP server — see `features/cycle_count.feature`
+end-to-end against the real HTTP server — see `features/void_label.feature`
 for the exact shape this repo's `bdd` CI job expects (Given/When/Then over
 real HTTP, not mocked).
 

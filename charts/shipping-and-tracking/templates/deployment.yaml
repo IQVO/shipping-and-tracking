@@ -1,0 +1,156 @@
+{{- include "shipping-and-tracking.requireRealRuntime" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shipping-and-tracking.fullname" . }}
+  labels:
+    {{- include "shipping-and-tracking.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- if not .Values.autoscaling.api.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "shipping-and-tracking.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "shipping-and-tracking.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "shipping-and-tracking.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ include "shipping-and-tracking.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/app/api"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          # Every config.* value also reaches cmd/api through the chart
+          # ConfigMap. The explicit `env` entries below win over envFrom for
+          # the same key and carry the same values. tests/render_test.sh
+          # asserts the mount and that every variable cmd/api reads is rendered.
+          envFrom:
+            - configMapRef:
+                name: {{ include "shipping-and-tracking.fullname" . }}
+          # Env contract verified against cmd/api/config.go. Values with a
+          # dedicated chart key are rendered here, never through extraEnv.
+          env:
+            - name: HTTP_ADDR
+              value: {{ .Values.config.httpAddr | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            - name: EVENT_PUBLISHER
+              value: {{ .Values.config.eventPublisher | quote }}
+            - name: KAFKA_BROKERS
+              value: {{ .Values.kafka.brokers | quote }}
+            - name: CUSTOMER_ORDERING_URL
+              value: {{ .Values.config.customerOrderingUrl | quote }}
+            {{- with .Values.config.customerOrderingTimeout }}
+            - name: CUSTOMER_ORDERING_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            # Stable, service-prefixed group ids from values, never the pod name.
+            - name: VENDOR_CONSUMER_GROUP
+              value: {{ .Values.config.vendorConsumerGroup | quote }}
+            - name: LINEHAUL_CONSUMER_GROUP
+              value: {{ .Values.config.linehaulConsumerGroup | quote }}
+            - name: LASTMILE_CONSUMER_GROUP
+              value: {{ .Values.config.lastmileConsumerGroup | quote }}
+            - name: CATALOG_CONSUMER_GROUP
+              value: {{ .Values.config.catalogConsumerGroup | quote }}
+            {{- with .Values.config.outboxRelayInterval }}
+            - name: OUTBOX_RELAY_INTERVAL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: OUTBOX_MAX_ATTEMPTS
+              value: {{ .Values.config.outboxMaxAttempts | quote }}
+            {{- with .Values.config.silenceSweepInterval }}
+            - name: SILENCE_SWEEP_INTERVAL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.housekeepingInterval }}
+            - name: HOUSEKEEPING_INTERVAL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.shutdownDrainDelay }}
+            - name: SHUTDOWN_DRAIN_DELAY
+              value: {{ . | quote }}
+            {{- end }}
+            # Secrets: the DSN, the ship-to snapshot key and the stopKey secret.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "shipping-and-tracking.databaseSecretName" . }}
+                  key: {{ .Values.database.existingSecretKey }}
+            {{- if .Values.database.migrationsExistingSecretKey }}
+            # A direct (non-pooled) connection for the boot migrations only;
+            # optional so a Secret without the key still starts the pod (the
+            # binary falls back to DATABASE_URL).
+            - name: MIGRATIONS_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "shipping-and-tracking.databaseSecretName" . }}
+                  key: {{ .Values.database.migrationsExistingSecretKey }}
+                  optional: true
+            {{- end }}
+            - name: SHIP_TO_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "shipping-and-tracking.cryptoSecretName" . }}
+                  key: {{ .Values.crypto.shipToEncryptionKeyKey }}
+            - name: STOP_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "shipping-and-tracking.cryptoSecretName" . }}
+                  key: {{ .Values.crypto.stopKeySecretKey }}
+            {{- range .Values.extraEnv }}
+            - {{ toYaml . | nindent 14 | trim }}
+            {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
