@@ -257,7 +257,7 @@ components:
                 "orderId": "ord-001",
                 "packageNo": 1,
                 "tier": "NEXT_DAY",
-                "carrier": "RN-PARCEL",
+                "carrier": "RN-EXPRESS",
                 "stopKey": "9f2a6c0d4b7e11aa5c3d8e90b1f47a62c8d0e3f15a9b7c24d6e8f0a1b3c5d7e9",
                 "destinationPostalPrefix": "01310"
               }
@@ -545,7 +545,7 @@ components:
       name: LoadArrived
       title: LoadArrived (consumed from linehaul-transportation)
       summary: A load arrived at a node.
-      description: "`type` = `com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived`. A load arrived at a node. nodeType DELIVERY_STATION gives STATION_ARRIVAL (also straight after handover: direct injection, E3); SORTATION_CENTER and AIR_HUB give TRANSIT_ARRIVAL; other node types are stored as not applied. nodeType is the contracts-delta E3 name; destinationNodeType is read as a fallback."
+      description: "`type` = `com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived`. A load arrived at a node. nodeType DELIVERY_STATION gives STATION_ARRIVAL (also straight after handover: direct injection, E3); any other or absent nodeType gives TRANSIT_ARRIVAL. nodeType is the contracts-delta E3 name; destinationNodeType is read as a fallback."
       contentType: application/cloudevents+json
       tags:
         - name: shipping-and-tracking
