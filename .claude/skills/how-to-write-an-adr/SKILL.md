@@ -15,31 +15,18 @@ addition inside an already-decided architecture doesn't.
 
 ## Numbering and location
 
-`docs/docs/adr/NNNN-kebab-case-title.md`, four-digit zero-padded,
+`docs/adr/NNNN-kebab-case-title.md`, four-digit zero-padded,
 sequential — check the highest existing number
-(`git ls-tree --name-only origin/develop -- docs/docs/adr/` and pick the
-next integer, never reuse or guess). `docs/docs/adr/about.md` explains the
+(`git ls-tree --name-only origin/develop -- docs/adr/` and pick the
+next integer, never reuse or guess). `docs/adr/index.md` explains the
 format to readers; you don't need to touch it when adding a new ADR.
 
-## Frontmatter (Docusaurus needs all five fields)
+## Heading and links
 
-```yaml
----
-id: NNNN-kebab-case-title
-slug: /adr/NNNN-kebab-case-title
-title: "NN. Title (a short noun phrase, matching the heading)"
-sidebar_label: "NN. Short label for the nav sidebar"
-sidebar_position: NN
-description: "One or two sentences — this shows up in search and link
-  previews, so make it stand alone without the rest of the doc."
----
-```
-
-`id`/`slug` are the full kebab-case filename (minus `.md`); `title`/
-`sidebar_label` repeat the number as plain text (`"13. ..."`, not `#13`);
-`sidebar_position` is the bare integer. Getting these inconsistent is the
-most common cause of a broken sidebar entry or 404 after merge — verify
-by running the docs build (see below) before opening the PR.
+This repo has no docs site: an ADR is a plain markdown file that starts with `# ADR NNNN: title`, followed by
+`## Status` (`Accepted (date)`), `## Context`, `## Decision`, `## Consequences`. Add it to `docs/adr/index.md`.
+`TestEventCatalogueMatchesContract` reads ADR 0004, so a published event type is added there in the same commit as
+`apis/asyncapi.yaml`.
 
 ## Format: Michael Nygard's template
 
@@ -70,7 +57,7 @@ lists benefits reads as marketing, not a decision record.
 ```
 
 The `## Decision` section is the part worth the most editing effort: see
-ADR-0013 (`docs/docs/adr/0013-location-classification-via-facility-events.md`)
+ADR 0003 (`docs/adr/0003-consumed-contracts-and-local-read-models.md`)
 for a model example — it states the exact mechanism (event-fed local
 cache replacing a synchronous HTTP read), names the readiness-gate design,
 and is specific enough that Task "how-to-add-an-integration-event"'s
@@ -94,17 +81,11 @@ split of responsibility — see facility-layout's ADR-0016/0017 pair. Don't
 write the decision once in one repo and expect the other repo's readers
 to find it; each bounded context's docs site is read independently.
 
-## After writing: regenerate and verify the docs build
+## After writing: verify
 
 ```bash
-cd docs
-npm ci
-npm run build   # onBrokenLinks / onBrokenAnchors are both 'throw' — this
-                 # WILL fail if the frontmatter/slug is wrong or a
-                 # cross-reference link is broken
+python3 scripts/harness/repo_lint.py && python3 scripts/harness/guide_lint.py
+make arch-test
 ```
 
-A broken ADR link or malformed frontmatter fails the build with a clear
-Docusaurus error, not a silent 404 — always run this locally before
-opening the PR; several repos in this fleet gate this in CI
-(`docs-api-drift`/dedicated docs build job) but not all yet.
+A relative link to a file that does not exist is a `repo_lint` error, so run it before opening the PR.

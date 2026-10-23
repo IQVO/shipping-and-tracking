@@ -5,21 +5,21 @@ paths:
   - "apis/asyncapi*"
 ---
 
-<!-- TEMPLATE (warehouse-harness-template v2): fill in every "FILL IN" for
-     THIS repo, or delete this file if the repo publishes/consumes no Kafka
-     events. The "CloudEvents 1.0 is MANDATORY" section is NOT a
-     placeholder: keep it verbatim, only substitute the per-repo values. -->
 # Cross-service integration events (Kafka)
 
-FILL IN: state whether this service PUBLISHES, CONSUMES, or both, and
-to/from which topic(s). Fleet naming: `warehouse.<context>.events`
-(integration) and `warehouse.<context>.analytics` (consumed only by this
-service's own analytics projector).
+This service PUBLISHES and CONSUMES. The retail-network namespace overrides the fleet's `warehouse` one (see
+`fleet/cloudevents.md`): topics `retailnetwork.<context>.events`, `source=/retailnetwork/shipping-and-tracking`,
+`type=com.retailnetwork.logistics.shipping-and-tracking.<entity>.<Event>`, `dataschema=urn:retailnetwork:shipping-and-tracking:events:<Event>:v1`.
+
+- Publishes (all eight on `retailnetwork.shipping-and-tracking.events`, key = subject): `label.LabelIssued`, `label.LabelVoided`, `journey.PackageScanned`, `journey.PackageHandedOver`, `journey.PackageDelivered`, `journey.PackageExceptionRaised`, `journey.PackageReturned`, `journey.PackageLost`. The encoder is `internal/adapters/outbound/kafka/encoder.go`; the catalogue is ADR 0004; the contract is `apis/asyncapi.yaml`.
+- Consumes (one consumer and one mandatory `*_CONSUMER_GROUP` per topic): vendor-connectivity `VendorShipmentConfirmed`, linehaul-transportation `LoadDeparted` / `LoadArrived`, last-mile-delivery `PackageOutForDelivery` / `DeliveryAttempted` / `PackageReturnInitiated`, offer-availability `CatalogItemCreated` (ADR 0003, `internal/adapters/inbound/kafka`).
+- Poison messages go to `<topic>.dlq` at once; transient failures retry five times with backoff, then go there too. The inbox (`processed_events`) makes redelivery harmless.
+- `TestEventCatalogueMatchesContract` and `TestConsumedTypesAreDocumented` keep the contract, the ADRs and the code together.
 
 ## Events: CloudEvents 1.0 is MANDATORY
 
 Every Kafka message this service produces or consumes (integration
-`warehouse.<ctx>.events` AND analytics `warehouse.<ctx>.analytics`) is a
+`retailnetwork.<ctx>.events` AND analytics `retailnetwork.<ctx>.analytics`) is a
 CloudEvents 1.0 event in structured content mode. This is a hard fleet rule,
 not a preference — there is nothing to "choose" here:
 
@@ -41,14 +41,13 @@ not a preference — there is nothing to "choose" here:
   balancer.
 - Required attributes: `specversion=1.0`; `id` (UUID v4 minted ONCE per
   domain event and persisted with the outbox row, so redelivery carries
-  the same id); `source=/warehouse/<repo>`; `type`; `subject` (aggregate
+  the same id); `source=/retailnetwork/<repo>`; `type`; `subject` (aggregate
   instance id, never empty); `time` (domain occurred-at, UTC);
   `datacontenttype=application/json`;
-  `dataschema=urn:warehouse:<repo>:<events|analytics>:<EventName>:v<N>`.
+  `dataschema=urn:retailnetwork:<repo>:<events|analytics>:<EventName>:v<N>`.
   No custom extension attributes without an ADR.
-- `type` = `com.warehouse.<subdomain>.<bounded-context>.<entity>.<EventName>`
-  (subdomain `wms` or `wes`; FILL IN this repo's exact prefix, e.g.
-  `com.warehouse.wes.order-management`). The SAME `type` names the
+- `type` = `com.retailnetwork.<tier>.<bounded-context>.<entity>.<EventName>`
+  (this repo: `com.retailnetwork.logistics.shipping-and-tracking.<label|journey>.<EventName>`). The SAME `type` names the
   occurrence on both the integration and the analytics topic; `dataschema`
   names the payload shape. Breaking payload change => new `.v2` type + new
   dataschema version, never mutate an existing one.
@@ -62,40 +61,46 @@ not a preference — there is nothing to "choose" here:
   the `content-type` header); a legacy-flat-message-rejected test per
   consumer; Kafka integration tests via testcontainers only.
 
-Full standard, subdomain table and the fleet's cross-service type
-catalogue: warehouse-docs `docs/strategic-design/event-standard-cloudevents.md`.
-Record it in this repo as its own ADR "CloudEvents 1.0 as the mandatory
-event envelope" under `docs/docs/adr/`.
+Record: ADR 0004 (`docs/adr/0004-cloudevents-envelope-and-type-catalogue.md`) is this repo's catalogue.
 
 ### Published types
 
-FILL IN: one row per published event, exact strings.
+All on `retailnetwork.shipping-and-tracking.events`, `dataschema` = `urn:retailnetwork:shipping-and-tracking:events:<EventName>:v1`.
 
-| `type` | topic(s) | `subject` | `dataschema` |
-| --- | --- | --- | --- |
-| `com.warehouse.<sub>.<ctx>.<entity>.<EventName>` | `warehouse.<ctx>.events` | aggregate id | `urn:warehouse:<repo>:events:<EventName>:v1` |
+| `type` | `subject` |
+| --- | --- |
+| `com.retailnetwork.logistics.shipping-and-tracking.label.LabelIssued` | `labelRef` |
+| `com.retailnetwork.logistics.shipping-and-tracking.label.LabelVoided` | `labelRef` |
+| `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageScanned` | `trackingNumber` |
+| `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageHandedOver` | `trackingNumber` |
+| `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDelivered` | `trackingNumber` |
+| `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageExceptionRaised` | `trackingNumber` |
+| `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageReturned` | `trackingNumber` |
+| `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageLost` | `trackingNumber` |
 
 ### Consumed types
 
-FILL IN: one row per consumed event — the EXACT `type` string from the
-producer's catalogue (byte-identical; see the cross-service catalogue on the
-Event Standard page).
+The exact strings are the constants of `internal/adapters/inbound/kafka/handlers.go` (also ADR 0003).
 
 | `type` | topic | producer |
 | --- | --- | --- |
+| `com.retailnetwork.partner.vendor-connectivity.purchaseorder.VendorShipmentConfirmed` | `retailnetwork.vendor-connectivity.events` | vendor-connectivity |
+| `com.retailnetwork.logistics.linehaul-transportation.load.LoadDeparted` | `retailnetwork.linehaul-transportation.events` | linehaul-transportation |
+| `com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived` | `retailnetwork.linehaul-transportation.events` | linehaul-transportation |
+| `com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery` | `retailnetwork.last-mile-delivery.events` | last-mile-delivery |
+| `com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted` | `retailnetwork.last-mile-delivery.events` | last-mile-delivery |
+| `com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated` (also `...route.PackageReturnInitiated`) | `retailnetwork.last-mile-delivery.events` | last-mile-delivery |
+| `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `retailnetwork.offer-availability.events` | offer-availability |
 
 ## Consumer group id
 
-If this service consumes Kafka: state where the consumer group id comes
-from. It MUST be env-configurable, never a hardcoded string literal --
+The consumer group id MUST be env-configurable, never a hardcoded string literal --
 `internal/architecture/fitness_test.go`'s
 TestKafkaConsumerGroupNeverHardcodedInline enforces this (a real incident:
 wes-work-planning's hardcoded group id let a locally-run e2e-tests process
 silently collide with the live in-cluster Deployment's consumer group on
 the shared fleet Kafka broker).
 
-If this consumer replays from FirstOffset on every start to build an
-in-memory read model (rather than resuming from a committed offset), the
-group id must additionally be UNIQUE PER PROCESS INSTANCE (hostname+PID+
-timestamp), not just configurable -- see HARNESS.md's Kafka section for
-why a shared group breaks that pattern specifically.
+Here the groups come from `VENDOR_CONSUMER_GROUP`, `LINEHAUL_CONSUMER_GROUP`, `LASTMILE_CONSUMER_GROUP` and
+`CATALOG_CONSUMER_GROUP`, all mandatory (a missing one is a boot error naming it). The consumers resume from the
+committed offset; none replays from the first offset.
