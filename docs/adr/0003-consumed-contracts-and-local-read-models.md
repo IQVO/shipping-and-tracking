@@ -27,7 +27,7 @@ CloudEvents `type`, deduplicated on the CloudEvents `id` in `processed_events` (
 | linehaul-transportation | `com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived` | `destinationNodeId`, `trackingNumbers[]`, `arrivedAt`, `nodeType` (fallback `destinationNodeType`) | `STATION_ARRIVAL` or `TRANSIT_ARRIVAL` scan |
 | last-mile-delivery (Conformist) | `com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery` | `trackingNumber`, `stationNodeId`, `at` | `OUT_FOR_DELIVERY` scan |
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted` | `trackingNumber`, `outcome`, `at` | `DELIVERED` or `DELIVERY_FAILED` scan |
-| last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated` (also accepted: `...last-mile-delivery.route.PackageReturnInitiated`) | `trackingNumber` | `ReturnToSender` |
+| last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated` (also accepted: `com.retailnetwork.logistics.last-mile-delivery.route.PackageReturnInitiated`) | `trackingNumber` | `ReturnToSender` |
 | offer-availability (Conformist) | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | upsert `catalog_dimensions` |
 
 The entity segment of `PackageReturnInitiated` is last-mile-delivery's choice (the model names no
