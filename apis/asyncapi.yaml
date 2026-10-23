@@ -1,0 +1,952 @@
+asyncapi: 3.0.0
+
+info:
+  title: shipping-and-tracking Domain Events
+  version: "1.0.0"
+  contact:
+    name: shipping-and-tracking maintainers
+    url: https://github.com/IQVO/shipping-and-tracking
+    email: shipping-and-tracking@iqvo.example.com
+  license:
+    name: UNLICENSED
+  tags:
+    - name: shipping-and-tracking
+      description: The shipping-and-tracking bounded context (retail network, logistics tier).
+    - name: label
+      description: Events raised by the ShippingLabel aggregate.
+    - name: journey
+      description: Events raised by the PackageJourney aggregate.
+  description: |
+    Event catalog for the **shipping-and-tracking** bounded context of the retail
+    network (logistics tier): it issues shipping labels and owns each package's
+    journey, the one customer-visible timeline consolidated from vendor handover,
+    load and delivery facts (ADR 0001, ADR 0002).
+
+    **Published.** Eight events, all on `retailnetwork.shipping-and-tracking.events`,
+    through a **transactional outbox**: the aggregate rows and their already-encoded
+    events are written in ONE database transaction and an always-on relay drains
+    them to Kafka (at-least-once; the CloudEvents `id` is stored with the outbox row,
+    so a retry republishes the same `id`). The eight types are catalogued in ADR 0004.
+    Every one is an integration event: the model's analytics-only events
+    (LabelVoided, PackageReturned, PackageLost) were promoted by contracts-delta
+    E6 and E16, so nothing is published on `retailnetwork.shipping-and-tracking.analytics`.
+    No event carries a ship-to address or any part of it (the opaque `stopKey` and the
+    postal prefix on LabelIssued are the only derived values; ADR 0002 A9, A10).
+
+    **Consumed.** Seven types from four topics (ADR 0003): vendor-connectivity
+    VendorShipmentConfirmed, linehaul-transportation LoadDeparted and LoadArrived,
+    last-mile-delivery PackageOutForDelivery, DeliveryAttempted and
+    PackageReturnInitiated, offer-availability CatalogItemCreated. Each consumer
+    group dedupes on the CloudEvents `id` (inbox table `processed_events`),
+    dispatches on the full `type`, ignores unknown types and fields, and parks a
+    poison message on a dead-letter topic.
+
+    **Envelope (mandatory).** CloudEvents 1.0, structured content mode, Kafka
+    header `content-type: application/cloudevents+json; charset=UTF-8`.
+    `specversion`, `id`, `source` (`/retailnetwork/shipping-and-tracking`), `type`,
+    `subject` (the aggregate root id), `time`, `datacontenttype` (`application/json`)
+    and `dataschema` (`urn:retailnetwork:shipping-and-tracking:events:<EventName>:v1`)
+    are all required. Kafka key = the subject, so one aggregate's events stay ordered
+    on one partition. Type = `com.retailnetwork.logistics.shipping-and-tracking.<entity>.<EventName>`
+    with entity `label` or `journey`. A breaking payload change is a new `.v2` type,
+    never a mutation.
+
+    **Conventions.** `data` is camelCase; timestamps are RFC 3339 UTC; optional fields
+    are omitted when unset; arrays are always present.
+
+servers:
+  production:
+    host: "{brokers}"
+    protocol: kafka
+    description: Retail-network Kafka broker (host supplied by the deployment environment via KAFKA_BROKERS).
+    variables:
+      brokers:
+        default: "kafka.retail-network.internal:9092"
+
+defaultContentType: application/cloudevents+json
+
+channels:
+  shippingAndTrackingEvents:
+    address: retailnetwork.shipping-and-tracking.events
+    title: shipping-and-tracking integration topic
+    description: |
+      This service's integration topic. Written by the outbox relay; key = subject
+      (labelRef for label events, trackingNumber for journey events). Every message
+      carries the CloudEvents content-type header. Dispatch on the full `type`,
+      ignore unknown types, dedupe on `id`.
+    messages:
+      LabelIssued:
+        $ref: "#/components/messages/LabelIssued"
+      LabelVoided:
+        $ref: "#/components/messages/LabelVoided"
+      PackageScanned:
+        $ref: "#/components/messages/PackageScanned"
+      PackageHandedOver:
+        $ref: "#/components/messages/PackageHandedOver"
+      PackageDelivered:
+        $ref: "#/components/messages/PackageDelivered"
+      PackageExceptionRaised:
+        $ref: "#/components/messages/PackageExceptionRaised"
+      PackageReturned:
+        $ref: "#/components/messages/PackageReturned"
+      PackageLost:
+        $ref: "#/components/messages/PackageLost"
+  vendorConnectivityEvents:
+    address: retailnetwork.vendor-connectivity.events
+    title: vendor-connectivity integration topic (consumed)
+    description: |
+      Owned by vendor-connectivity; this service only reads it, in its own consumer group,
+      and relies on the fields listed on each message. Unknown fields and unknown
+      types are ignored.
+    messages:
+      VendorShipmentConfirmed:
+        $ref: "#/components/messages/VendorShipmentConfirmed"
+  linehaulEvents:
+    address: retailnetwork.linehaul-transportation.events
+    title: linehaul-transportation integration topic (consumed)
+    description: |
+      Owned by linehaul-transportation; this service only reads it, in its own consumer group,
+      and relies on the fields listed on each message. Unknown fields and unknown
+      types are ignored.
+    messages:
+      LoadDeparted:
+        $ref: "#/components/messages/LoadDeparted"
+      LoadArrived:
+        $ref: "#/components/messages/LoadArrived"
+  lastMileEvents:
+    address: retailnetwork.last-mile-delivery.events
+    title: last-mile-delivery integration topic (consumed)
+    description: |
+      Owned by last-mile-delivery; this service only reads it, in its own consumer group,
+      and relies on the fields listed on each message. Unknown fields and unknown
+      types are ignored.
+    messages:
+      PackageOutForDelivery:
+        $ref: "#/components/messages/PackageOutForDelivery"
+      DeliveryAttempted:
+        $ref: "#/components/messages/DeliveryAttempted"
+      PackageReturnInitiated:
+        $ref: "#/components/messages/PackageReturnInitiated"
+  offerAvailabilityEvents:
+    address: retailnetwork.offer-availability.events
+    title: offer-availability integration topic (consumed)
+    description: |
+      Owned by offer-availability; this service only reads it, in its own consumer group,
+      and relies on the fields listed on each message. Unknown fields and unknown
+      types are ignored.
+    messages:
+      CatalogItemCreated:
+        $ref: "#/components/messages/CatalogItemCreated"
+
+operations:
+  publishShippingAndTrackingEvents:
+    action: send
+    title: Publish shipping-and-tracking events
+    summary: Publish the eight shipping-and-tracking events through the transactional outbox.
+    description: |
+      The service sends every event of its two aggregates (ShippingLabel,
+      PackageJourney) to `retailnetwork.shipping-and-tracking.events`. Consumers route
+      on the full `type`.
+    tags:
+      - name: shipping-and-tracking
+    channel:
+      $ref: "#/channels/shippingAndTrackingEvents"
+    messages:
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/LabelIssued"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/LabelVoided"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageScanned"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageHandedOver"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageDelivered"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageExceptionRaised"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageReturned"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageLost"
+  consumeVendorConnectivityEvents:
+    action: receive
+    title: Consume vendor-connectivity events
+    summary: Receive VendorShipmentConfirmed from vendor-connectivity.
+    description: |
+      Inbound adapter under internal/adapters/inbound/kafka. Reads `retailnetwork.vendor-connectivity.events` in the
+      consumer group named by an environment variable (mandatory), records the CloudEvents
+      `id` in `processed_events` in the same transaction as the effect, and dead-letters
+      a message it cannot decode.
+    tags:
+      - name: shipping-and-tracking
+    channel:
+      $ref: "#/channels/vendorConnectivityEvents"
+    messages:
+      - $ref: "#/channels/vendorConnectivityEvents/messages/VendorShipmentConfirmed"
+  consumeLinehaulTransportationEvents:
+    action: receive
+    title: Consume linehaul-transportation events
+    summary: Receive LoadDeparted, LoadArrived from linehaul-transportation.
+    description: |
+      Inbound adapter under internal/adapters/inbound/kafka. Reads `retailnetwork.linehaul-transportation.events` in the
+      consumer group named by an environment variable (mandatory), records the CloudEvents
+      `id` in `processed_events` in the same transaction as the effect, and dead-letters
+      a message it cannot decode.
+    tags:
+      - name: shipping-and-tracking
+    channel:
+      $ref: "#/channels/linehaulEvents"
+    messages:
+      - $ref: "#/channels/linehaulEvents/messages/LoadDeparted"
+      - $ref: "#/channels/linehaulEvents/messages/LoadArrived"
+  consumeLastMileDeliveryEvents:
+    action: receive
+    title: Consume last-mile-delivery events
+    summary: Receive PackageOutForDelivery, DeliveryAttempted, PackageReturnInitiated from last-mile-delivery.
+    description: |
+      Inbound adapter under internal/adapters/inbound/kafka. Reads `retailnetwork.last-mile-delivery.events` in the
+      consumer group named by an environment variable (mandatory), records the CloudEvents
+      `id` in `processed_events` in the same transaction as the effect, and dead-letters
+      a message it cannot decode.
+    tags:
+      - name: shipping-and-tracking
+    channel:
+      $ref: "#/channels/lastMileEvents"
+    messages:
+      - $ref: "#/channels/lastMileEvents/messages/PackageOutForDelivery"
+      - $ref: "#/channels/lastMileEvents/messages/DeliveryAttempted"
+      - $ref: "#/channels/lastMileEvents/messages/PackageReturnInitiated"
+  consumeOfferAvailabilityEvents:
+    action: receive
+    title: Consume offer-availability events
+    summary: Receive CatalogItemCreated from offer-availability.
+    description: |
+      Inbound adapter under internal/adapters/inbound/kafka. Reads `retailnetwork.offer-availability.events` in the
+      consumer group named by an environment variable (mandatory), records the CloudEvents
+      `id` in `processed_events` in the same transaction as the effect, and dead-letters
+      a message it cannot decode.
+    tags:
+      - name: shipping-and-tracking
+    channel:
+      $ref: "#/channels/offerAvailabilityEvents"
+    messages:
+      - $ref: "#/channels/offerAvailabilityEvents/messages/CatalogItemCreated"
+
+components:
+  messages:
+    LabelIssued:
+      name: LabelIssued
+      title: A shipping label was issued for one package
+      summary: A shipping label was issued for one package.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.label.LabelIssued`; Raised by IssueLabel. Subject and key = the labelRef. Consumers: linehaul-transportation (ExpectedVolumeView), customer-ordering (OrderTrackingView), last-mile-delivery (groups stops by `stopKey`, contracts-delta E10). `stopKey` is an opaque keyed hash of the normalized ship-to address and `destinationPostalPrefix` its postal prefix: no address ever appears on the wire. `orderId` is an additive field (ADR 0002 A12)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: label
+      payload:
+        $ref: "#/components/schemas/LabelIssuedEvent"
+      examples:
+        - name: labelIssued
+          summary: A shipping label was issued for one package.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c01",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.label.LabelIssued",
+              "subject": "lbl-7c1f",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:LabelIssued:v1",
+              "data": {
+                "labelRef": "lbl-7c1f",
+                "trackingNumber": "STT00000000000042",
+                "poNumber": "PO-1001",
+                "assignmentId": "asg-001",
+                "orderId": "ord-001",
+                "packageNo": 1,
+                "tier": "NEXT_DAY",
+                "carrier": "RN-PARCEL",
+                "stopKey": "9f2a6c0d4b7e11aa5c3d8e90b1f47a62c8d0e3f15a9b7c24d6e8f0a1b3c5d7e9",
+                "destinationPostalPrefix": "01310"
+              }
+            }
+    LabelVoided:
+      name: LabelVoided
+      title: A shipping label was voided
+      summary: A shipping label was voided.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.label.LabelVoided`; Raised by VoidLabel when the label moves ISSUED to VOIDED (the LABELLED journey closes as VOIDED in the same transaction). Subject and key = the labelRef. Integration event (contracts-delta E16): consumed by customer-ordering and linehaul-transportation (ExpectedVolumeView)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: label
+      payload:
+        $ref: "#/components/schemas/LabelVoidedEvent"
+      examples:
+        - name: labelVoided
+          summary: A shipping label was voided.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c02",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.label.LabelVoided",
+              "subject": "lbl-7c1f",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:LabelVoided:v1",
+              "data": {
+                "labelRef": "lbl-7c1f",
+                "trackingNumber": "STT00000000000042",
+                "reason": "order cancelled before pickup"
+              }
+            }
+    PackageScanned:
+      name: PackageScanned
+      title: A scan was applied to a package journey
+      summary: A scan was applied to a package journey.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageScanned`; Raised by RecordScan for every APPLIED scan (a scan stored out of order or without an edge raises nothing). Subject and key = the trackingNumber. `state` is the journey state after the scan. A handover or delivery raises two events in one transaction: this one and the milestone event."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageScannedEvent"
+      examples:
+        - name: packageScanned
+          summary: A scan was applied to a package journey.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c03",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageScanned",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageScanned:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "scanId": "9b1d2c3e-0000-4000-8000-000000000001:STT00000000000042",
+                "nodeId": "node-fc-01",
+                "scanType": "PICKUP_DEPARTURE",
+                "at": "2026-10-23T11:30:00Z",
+                "state": "HANDED_OVER"
+              }
+            }
+    PackageHandedOver:
+      name: PackageHandedOver
+      title: A package entered the network (handover)
+      summary: A package entered the network (handover).
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageHandedOver`; Raised on LABELLED to HANDED_OVER (policy HandoverOnFirstScan): the first PICKUP-kind LoadDeparted at the vendor node. `handedOverAt` is the instant node-performance measures the vendor against."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageHandedOverEvent"
+      examples:
+        - name: packageHandedOver
+          summary: A package entered the network (handover).
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c04",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageHandedOver",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageHandedOver:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "poNumber": "PO-1001",
+                "nodeId": "node-fc-01",
+                "handedOverAt": "2026-10-23T11:30:00Z"
+              }
+            }
+    PackageDelivered:
+      name: PackageDelivered
+      title: A package was delivered
+      summary: A package was delivered.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDelivered`; Raised on OUT_FOR_DELIVERY to DELIVERED. Consumers: delivery-promise (JudgeOnDelivery; the group is judged on its LAST delivered package, contracts-delta E1), order-sourcing (MarkDelivered), customer-ordering."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageDeliveredEvent"
+      examples:
+        - name: packageDelivered
+          summary: A package was delivered.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c05",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDelivered",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageDelivered:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "assignmentId": "asg-001",
+                "orderId": "ord-001",
+                "deliveredAt": "2026-10-24T15:05:00Z"
+              }
+            }
+    PackageExceptionRaised:
+      name: PackageExceptionRaised
+      title: A package journey raised an exception
+      summary: A package journey raised an exception.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageExceptionRaised`; Raised by the ExceptionOnSilence sweep with reason NO_SCAN: no scan arrived within the expected window of the journey's state and tier (ADR 0002 A7). The state does not change. At most one per silence. Consumers: delivery-promise (RepromiseOnRisk), customer-ordering."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageExceptionRaisedEvent"
+      examples:
+        - name: packageExceptionRaised
+          summary: A package journey raised an exception.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c06",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageExceptionRaised",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageExceptionRaised:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "assignmentId": "asg-001",
+                "orderId": "ord-001",
+                "reason": "NO_SCAN",
+                "at": "2026-10-24T13:00:00Z"
+              }
+            }
+    PackageReturned:
+      name: PackageReturned
+      title: A package was returned to the sender
+      summary: A package was returned to the sender.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageReturned`; Raised on AT_STATION to RETURNED, triggered by last-mile-delivery's PackageReturnInitiated (contracts-delta E15). Integration event (E6): delivery-promise judges the promise BROKEN with cause RETURNED."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageReturnedEvent"
+      examples:
+        - name: packageReturned
+          summary: A package was returned to the sender.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c07",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageReturned",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageReturned:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "orderId": "ord-001",
+                "returnedAt": "2026-10-26T09:00:00Z"
+              }
+            }
+    PackageLost:
+      name: PackageLost
+      title: A package was declared lost
+      summary: A package was declared lost.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageLost`; Raised on IN_TRANSIT to LOST by the ExceptionOnSilence escalation (ADR 0002 A8). Integration event (E6): delivery-promise judges the promise BROKEN with cause LOST."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageLostEvent"
+      examples:
+        - name: packageLost
+          summary: A package was declared lost.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c08",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageLost",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageLost:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "orderId": "ord-001",
+                "declaredAt": "2026-10-27T13:00:00Z"
+              }
+            }
+    VendorShipmentConfirmed:
+      name: VendorShipmentConfirmed
+      title: VendorShipmentConfirmed (consumed from vendor-connectivity)
+      summary: The vendor confirmed it shipped a purchase order's packages.
+      description: "`type` = `com.retailnetwork.partner.vendor-connectivity.purchaseorder.VendorShipmentConfirmed`. The vendor confirmed it shipped a purchase order's packages. Becomes one SHIPMENT_CONFIRMED scan per tracking number (journey stays LABELLED)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/VendorShipmentConfirmedEvent"
+      examples:
+        - name: vendorShipmentConfirmed
+          summary: VendorShipmentConfirmed as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d09",
+              "source": "/retailnetwork/vendor-connectivity",
+              "type": "com.retailnetwork.partner.vendor-connectivity.purchaseorder.VendorShipmentConfirmed",
+              "subject": "PO-1001",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:vendor-connectivity:events:VendorShipmentConfirmed:v1",
+              "data": {
+                "poNumber": "PO-1001",
+                "assignmentId": "asg-001",
+                "nodeId": "node-fc-01",
+                "trackingNumbers": [
+                  "STT00000000000042"
+                ],
+                "shippedAt": "2026-10-23T11:00:00Z",
+                "requiredShipBy": "2026-10-23T14:00:00Z"
+              }
+            }
+    LoadDeparted:
+      name: LoadDeparted
+      title: LoadDeparted (consumed from linehaul-transportation)
+      summary: A load left a node.
+      description: "`type` = `com.retailnetwork.logistics.linehaul-transportation.load.LoadDeparted`. A load left a node. departureKind PICKUP at a vendor node is the handover (PICKUP_DEPARTURE); other kinds are DEPARTURE scans. departureKind and nodeType are contracts-delta E3 additions; their absence is tolerated (departureKind then defaults to LINEHAUL)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/LoadDepartedEvent"
+      examples:
+        - name: loadDeparted
+          summary: LoadDeparted as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d10",
+              "source": "/retailnetwork/linehaul-transportation",
+              "type": "com.retailnetwork.logistics.linehaul-transportation.load.LoadDeparted",
+              "subject": "load-9",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:linehaul-transportation:events:LoadDeparted:v1",
+              "data": {
+                "loadId": "load-9",
+                "departureId": "dep-9",
+                "originNodeId": "node-fc-01",
+                "trackingNumbers": [
+                  "STT00000000000042"
+                ],
+                "departedAt": "2026-10-23T11:30:00Z",
+                "departureKind": "PICKUP",
+                "nodeType": "FULFILLMENT_CENTER"
+              }
+            }
+    LoadArrived:
+      name: LoadArrived
+      title: LoadArrived (consumed from linehaul-transportation)
+      summary: A load arrived at a node.
+      description: "`type` = `com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived`. A load arrived at a node. nodeType DELIVERY_STATION gives STATION_ARRIVAL (also straight after handover: direct injection, E3); SORTATION_CENTER and AIR_HUB give TRANSIT_ARRIVAL; other node types are stored as not applied. nodeType is the contracts-delta E3 name; destinationNodeType is read as a fallback."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/LoadArrivedEvent"
+      examples:
+        - name: loadArrived
+          summary: LoadArrived as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d11",
+              "source": "/retailnetwork/linehaul-transportation",
+              "type": "com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived",
+              "subject": "load-9",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:linehaul-transportation:events:LoadArrived:v1",
+              "data": {
+                "loadId": "load-9",
+                "departureId": "dep-9",
+                "destinationNodeId": "node-ds-07",
+                "trackingNumbers": [
+                  "STT00000000000042"
+                ],
+                "arrivedAt": "2026-10-24T06:00:00Z",
+                "departureKind": "LINEHAUL",
+                "nodeType": "DELIVERY_STATION"
+              }
+            }
+    PackageOutForDelivery:
+      name: PackageOutForDelivery
+      title: PackageOutForDelivery (consumed from last-mile-delivery)
+      summary: A package left a delivery station on a route.
+      description: "`type` = `com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery`. A package left a delivery station on a route. Becomes an OUT_FOR_DELIVERY scan at stationNodeId."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/PackageOutForDeliveryEvent"
+      examples:
+        - name: packageOutForDelivery
+          summary: PackageOutForDelivery as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d12",
+              "source": "/retailnetwork/last-mile-delivery",
+              "type": "com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:last-mile-delivery:events:PackageOutForDelivery:v1",
+              "data": {
+                "routeId": "route-3",
+                "trackingNumber": "STT00000000000042",
+                "stationNodeId": "node-ds-07",
+                "at": "2026-10-24T09:00:00Z"
+              }
+            }
+    DeliveryAttempted:
+      name: DeliveryAttempted
+      title: DeliveryAttempted (consumed from last-mile-delivery)
+      summary: A delivery attempt finished.
+      description: "`type` = `com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted`. A delivery attempt finished. outcome DELIVERED gives a DELIVERED scan; any other outcome gives DELIVERY_FAILED (package back to the station). The node of the scan is the station of the package's last OUT_FOR_DELIVERY scan (ADR 0003)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/DeliveryAttemptedEvent"
+      examples:
+        - name: deliveryAttempted
+          summary: DeliveryAttempted as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d13",
+              "source": "/retailnetwork/last-mile-delivery",
+              "type": "com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:last-mile-delivery:events:DeliveryAttempted:v1",
+              "data": {
+                "routeId": "route-3",
+                "trackingNumber": "STT00000000000042",
+                "outcome": "DELIVERED",
+                "at": "2026-10-24T15:05:00Z"
+              }
+            }
+    PackageReturnInitiated:
+      name: PackageReturnInitiated
+      title: PackageReturnInitiated (consumed from last-mile-delivery)
+      summary: The third delivery attempt failed (contracts-delta E15).
+      description: "`type` = `com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated`. The third delivery attempt failed (contracts-delta E15). Drives ReturnToSender: AT_STATION to RETURNED. The entity segment of the type is last-mile-delivery's choice and is not yet published; ADR 0003 lists the accepted type strings."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/PackageReturnInitiatedEvent"
+      examples:
+        - name: packageReturnInitiated
+          summary: PackageReturnInitiated as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d14",
+              "source": "/retailnetwork/last-mile-delivery",
+              "type": "com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated",
+              "subject": "STT00000000000042",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:last-mile-delivery:events:PackageReturnInitiated:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042"
+              }
+            }
+    CatalogItemCreated:
+      name: CatalogItemCreated
+      title: CatalogItemCreated (consumed from offer-availability)
+      summary: A catalogue item was created.
+      description: "`type` = `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated`. A catalogue item was created. Upserted into the local CatalogDimensionsView (item dimensions, weight and handling flags for the label)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/CatalogItemCreatedEvent"
+      examples:
+        - name: catalogItemCreated
+          summary: CatalogItemCreated as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d15",
+              "source": "/retailnetwork/offer-availability",
+              "type": "com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated",
+              "subject": "item-1",
+              "time": "2026-10-23T12:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:offer-availability:events:CatalogItemCreated:v1",
+              "data": {
+                "catalogItemId": "item-1",
+                "title": "Desk lamp",
+                "lengthMm": 300,
+                "widthMm": 200,
+                "heightMm": 150,
+                "weightG": 900,
+                "hazmat": false,
+                "fragile": true
+              }
+            }
+
+  schemas:
+    CloudEventEnvelope:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion: { type: string, const: "1.0" }
+        id: { type: string, format: uuid }
+        source: { type: string }
+        type: { type: string }
+        subject: { type: string, description: The aggregate root id. }
+        time: { type: string, format: date-time }
+        datacontenttype: { type: string, const: application/json }
+        dataschema: { type: string }
+
+    ServiceTier:
+      type: string
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+
+    ScanType:
+      type: string
+      enum: [SHIPMENT_CONFIRMED, PICKUP_DEPARTURE, DEPARTURE, TRANSIT_ARRIVAL, STATION_ARRIVAL, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED]
+
+    JourneyState:
+      type: string
+      enum: [LABELLED, HANDED_OVER, IN_TRANSIT, AT_STATION, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST, VOIDED]
+
+    LabelIssuedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["labelRef", "trackingNumber", "poNumber", "assignmentId", "orderId", "packageNo", "tier", "carrier", "stopKey", "destinationPostalPrefix"]
+              properties:
+                labelRef: {"type": "string"}
+                trackingNumber: {"type": "string"}
+                poNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                orderId: {"type": "string", "description": "Additive over the model (ADR 0002 A12)."}
+                packageNo: {"type": "integer", "minimum": 1}
+                tier: {"$ref": "#/components/schemas/ServiceTier"}
+                carrier: {"type": "string"}
+                stopKey: {"type": "string", "description": "Opaque keyed hash (HMAC-SHA-256, hex) of the normalized address; equal addresses give equal keys."}
+                destinationPostalPrefix: {"type": "string", "description": "Leading characters of the ship-to postal code (ADR 0002 A10)."}
+
+    LabelVoidedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["labelRef", "trackingNumber", "reason"]
+              properties:
+                labelRef: {"type": "string"}
+                trackingNumber: {"type": "string"}
+                reason: {"type": "string"}
+
+    PackageScannedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "scanId", "nodeId", "scanType", "at", "state"]
+              properties:
+                trackingNumber: {"type": "string"}
+                scanId: {"type": "string"}
+                nodeId: {"type": "string"}
+                scanType: {"$ref": "#/components/schemas/ScanType"}
+                at: {"type": "string", "format": "date-time"}
+                state: {"$ref": "#/components/schemas/JourneyState"}
+
+    PackageHandedOverEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "poNumber", "nodeId", "handedOverAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                poNumber: {"type": "string"}
+                nodeId: {"type": "string"}
+                handedOverAt: {"type": "string", "format": "date-time"}
+
+    PackageDeliveredEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "assignmentId", "orderId", "deliveredAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                orderId: {"type": "string"}
+                deliveredAt: {"type": "string", "format": "date-time"}
+
+    PackageExceptionRaisedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "assignmentId", "orderId", "reason", "at"]
+              properties:
+                trackingNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                orderId: {"type": "string"}
+                reason: {"type": "string", "enum": ["NO_SCAN"]}
+                at: {"type": "string", "format": "date-time"}
+
+    PackageReturnedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "orderId", "returnedAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                orderId: {"type": "string"}
+                returnedAt: {"type": "string", "format": "date-time"}
+
+    PackageLostEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "orderId", "declaredAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                orderId: {"type": "string"}
+                declaredAt: {"type": "string", "format": "date-time"}
+
+    VendorShipmentConfirmedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["poNumber", "nodeId", "trackingNumbers", "shippedAt"]
+              properties:
+                poNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                nodeId: {"type": "string"}
+                trackingNumbers: {"type": "array", "items": {"type": "string"}}
+                shippedAt: {"type": "string", "format": "date-time"}
+                requiredShipBy: {"type": "string", "format": "date-time"}
+
+    LoadDepartedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["loadId", "originNodeId", "trackingNumbers", "departedAt"]
+              properties:
+                loadId: {"type": "string"}
+                departureId: {"type": "string"}
+                originNodeId: {"type": "string"}
+                trackingNumbers: {"type": "array", "items": {"type": "string"}}
+                departedAt: {"type": "string", "format": "date-time"}
+                departureKind: {"type": "string", "enum": ["PICKUP", "LINEHAUL", "AIR"]}
+                nodeType: {"type": "string", "description": "Type of the node where it happened."}
+
+    LoadArrivedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["loadId", "destinationNodeId", "trackingNumbers", "arrivedAt"]
+              properties:
+                loadId: {"type": "string"}
+                departureId: {"type": "string"}
+                destinationNodeId: {"type": "string"}
+                trackingNumbers: {"type": "array", "items": {"type": "string"}}
+                arrivedAt: {"type": "string", "format": "date-time"}
+                departureKind: {"type": "string", "enum": ["PICKUP", "LINEHAUL", "AIR"]}
+                nodeType: {"type": "string", "description": "Type of the node where it happened."}
+
+    PackageOutForDeliveryEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "stationNodeId", "at"]
+              properties:
+                routeId: {"type": "string"}
+                trackingNumber: {"type": "string"}
+                stationNodeId: {"type": "string"}
+                at: {"type": "string", "format": "date-time"}
+
+    DeliveryAttemptedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "outcome", "at"]
+              properties:
+                routeId: {"type": "string"}
+                trackingNumber: {"type": "string"}
+                outcome: {"type": "string", "description": "DELIVERED or FAILED."}
+                failureReason: {"type": "string"}
+                at: {"type": "string", "format": "date-time"}
+
+    PackageReturnInitiatedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber"]
+              properties:
+                trackingNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+
+    CatalogItemCreatedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["catalogItemId"]
+              properties:
+                catalogItemId: {"type": "string"}
+                title: {"type": "string"}
+                lengthMm: {"type": "integer"}
+                widthMm: {"type": "integer"}
+                heightMm: {"type": "integer"}
+                weightG: {"type": "integer"}
+                hazmat: {"type": "boolean"}
+                fragile: {"type": "boolean"}
