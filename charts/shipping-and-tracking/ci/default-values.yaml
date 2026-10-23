@@ -1,0 +1,18 @@
+# Used by `helm lint` / `ct lint`: the chart refuses to render without the
+# real runtime's mandatory values: a database source, the Kafka brokers,
+# customer-ordering's URL, the ship-to key and stopKey secret, and the four
+# consumer groups. Dummy, obviously fake values; nothing here is ever dialled
+# (the encryption key is 32 zero bytes in base64).
+database:
+  url: "postgres://u@example.invalid:5432/db"
+kafka:
+  brokers: "kafka.example.invalid:9092"
+crypto:
+  shipToEncryptionKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  stopKeySecret: "ci-dummy-stop-key-secret"
+config:
+  customerOrderingUrl: "http://customer-ordering.example.invalid"
+  vendorConsumerGroup: "shipping-and-tracking-vendor"
+  linehaulConsumerGroup: "shipping-and-tracking-linehaul"
+  lastmileConsumerGroup: "shipping-and-tracking-lastmile"
+  catalogConsumerGroup: "shipping-and-tracking-catalog"

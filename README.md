@@ -48,7 +48,17 @@ make integration    # testcontainers Postgres and Kafka, including the real-wiri
 make mutation       # gremlins over every internal/domain package
 ```
 
+## Deployment
+
+The Helm chart is [`charts/shipping-and-tracking/`](charts/shipping-and-tracking/): one `api` Deployment (plus Service, ConfigMap, Secrets, ServiceAccount; HPA, Ingress and HTTPRoute are off by default).
+`helm template` refuses to render, naming the value, without `database.url` or `database.existingSecret`, `kafka.brokers`,
+`config.customerOrderingUrl`, `crypto.existingSecret` (or `crypto.shipToEncryptionKey` and `crypto.stopKeySecret`) and the four
+`config.{vendor,linehaul,lastmile,catalog}ConsumerGroup` ids (stable and service-prefixed, never the pod name).
+`DATABASE_URL`, `SHIP_TO_ENCRYPTION_KEY` and `STOP_KEY_SECRET` come from Secrets (`secretKeyRef`) and never reach the ConfigMap.
+`terminationGracePeriodSeconds` (default 45) must exceed 30s plus `config.shutdownDrainDelay`, the sum of the shutdown bounds in `cmd/api`.
+The chart tests run with `bash charts/shipping-and-tracking/tests/render_test.sh` and `python3 charts/shipping-and-tracking/tests/test_service_selectors.py` (needs `helm` and PyYAML).
+
 ## Not done yet
 
-The Helm chart and the other items of [`docs/before-first-release.md`](docs/before-first-release.md) that need infrastructure.
+The items of [`docs/before-first-release.md`](docs/before-first-release.md) that need infrastructure (repository secrets).
 Traces and metrics are not built.

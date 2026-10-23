@@ -1,0 +1,12 @@
+apiVersion: v2
+name: shipping-and-tracking
+description: Shipping and Tracking - issues shipping labels and owns each package's journey (delivered, returned or lost); publishes events on Kafka
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/IQVO/shipping-and-tracking
+keywords:
+  - ddd
+  - hexagonal-architecture
+  - warehouse-management-system
+  - golang
