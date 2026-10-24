@@ -1,6 +1,6 @@
 # Domain model: ubiquitous language, aggregates, events, use cases
 
-Source of truth: retail-network-docs `model/model.yaml`; the decisions this repo took where the model is silent
+Source of truth: warehouse-docs `network/model/model.yaml`; the decisions this repo took where the model is silent
 are the numbered assumptions of `docs/adr/0002-aggregates-and-invariants.md` (A1..A30).
 
 ## Ubiquitous Language (use these exact names)
