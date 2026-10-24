@@ -5,9 +5,11 @@
 creates. A Service that selects on those two alone would select every
 component. Every Deployment here carries `app.kubernetes.io/component` in
 selector.matchLabels and its pod labels, and every Service selects on it, so
-each Service selects EXACTLY ONE Deployment. This chart has one component, api;
-the test also renders with every optional template on (HPA, Ingress, HTTPRoute)
-and fails if a second workload ever appears without its own selector.
+each Service selects EXACTLY ONE Deployment. Components: api (always), mcp
+(ADR 0006, default off) and frontend (the nginx pod serving the shipping_mfe
+remote, ADR 0007, default off), all rendered TOGETHER here. The test also
+renders with every optional template on (HPA, Ingress, HTTPRoute) and fails
+if a workload ever appears without its own selector.
 
 Run: python3 charts/shipping-and-tracking/tests/test_service_selectors.py
 Needs: helm, PyYAML.
@@ -28,7 +30,18 @@ ENABLE_EVERYTHING = BASE + [
     "--set", "autoscaling.api.enabled=true",
     "--set", "ingress.enabled=true",
     "--set", "gatewayApi.enabled=true",
+    "--set", "mcp.enabled=true",
+    "--set", "frontend.enabled=true",
 ]
+
+# The MCP server is read-only: no Kafka, no relay, no consumers, no crypto,
+# no customer-ordering.
+MCP_STRAY = {
+    "KAFKA_BROKERS", "EVENT_PUBLISHER", "OUTBOX_RELAY_INTERVAL", "OUTBOX_MAX_ATTEMPTS",
+    "VENDOR_CONSUMER_GROUP", "LINEHAUL_CONSUMER_GROUP", "LASTMILE_CONSUMER_GROUP",
+    "CATALOG_CONSUMER_GROUP", "SILENCE_SWEEP_INTERVAL", "HOUSEKEEPING_INTERVAL",
+    "SHIP_TO_ENCRYPTION_KEY", "STOP_KEY_SECRET", "CUSTOMER_ORDERING_URL",
+}
 
 
 def render(extra_args: list[str]) -> list[dict]:
@@ -58,16 +71,60 @@ def matches(selector: dict, labels: dict) -> bool:
     return bool(selector) and all(labels.get(k) == v for k, v in selector.items())
 
 
+def env_names(dep: dict) -> list[str]:
+    return [e["name"] for e in dep["spec"]["template"]["spec"]["containers"][0].get("env", [])]
+
+
+def command_of(dep: dict) -> list[str] | None:
+    return dep["spec"]["template"]["spec"]["containers"][0].get("command")
+
+
+def pins(svc: dict | None, component: str) -> bool:
+    return svc is not None and selector_of(svc).get("app.kubernetes.io/component") == component
+
+
 def check(docs: list[dict], failures: list[str]) -> None:
     services = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Service"}
     deployments = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Deployment"}
 
-    if set(deployments) != {RELEASE}:
-        failures.append(f"expected exactly the api Deployment {RELEASE!r}, got {sorted(deployments)}")
-    if set(services) != {RELEASE}:
-        failures.append(f"expected exactly the api Service {RELEASE!r}, got {sorted(services)}")
+    want = sorted([RELEASE] + [f"{RELEASE}-{c}" for c in ("mcp", "frontend")])
+    if sorted(deployments) != want:
+        failures.append(f"expected the Deployments {want}, got {sorted(deployments)}")
+    if sorted(services) != want:
+        failures.append(f"expected the Services {want}, got {sorted(services)}")
     elif selector_of(services[RELEASE]).get("app.kubernetes.io/component") != "api":
         failures.append("the api Service selector must pin component=api")
+
+    # The MCP Deployment runs /app/mcp with its own env, none of the api's.
+    mcp = deployments.get(f"{RELEASE}-mcp")
+    if mcp is None:
+        failures.append("the MCP Deployment was not rendered with mcp.enabled=true")
+    else:
+        if command_of(mcp) != ["/app/mcp"]:
+            failures.append("the MCP Deployment must run /app/mcp")
+        env = set(env_names(mcp))
+        stray = MCP_STRAY & env
+        if stray:
+            failures.append(f"the MCP Deployment must not get Kafka/relay/consumer/crypto env (it is read-only and never dials Kafka): {sorted(stray)}")
+        for need in ("DATABASE_URL", "MIGRATIONS_DATABASE_URL", "MCP_ADDR", "LOG_LEVEL", "SERVICE_VERSION", "ENVIRONMENT"):
+            if need not in env:
+                failures.append(f"the MCP Deployment does not render {need}")
+    if not pins(services.get(f"{RELEASE}-mcp"), "mcp"):
+        failures.append("the MCP Service must exist and pin component=mcp")
+
+    # The frontend Deployment serves static bytes: NO env at all.
+    frontend = deployments.get(f"{RELEASE}-frontend")
+    if frontend is None:
+        failures.append("the frontend Deployment was not rendered with frontend.enabled=true")
+    elif env_names(frontend):
+        failures.append(f"the frontend Deployment must render no env (static bytes): {env_names(frontend)}")
+    if not pins(services.get(f"{RELEASE}-frontend"), "frontend"):
+        failures.append("the frontend Service must exist and pin component=frontend")
+    elif services[f"{RELEASE}-frontend"]["spec"].get("type") != "ClusterIP":
+        failures.append("the frontend Service must be ClusterIP")
+    for d in docs:
+        if d.get("kind") in {"Ingress", "HTTPRoute"} and "frontend" in d["metadata"]["name"]:
+            failures.append(f"{d['kind']} {d['metadata']['name']}: frontend routing must not live in this chart")
 
     # Every Deployment's own selector pins a component and matches its pod labels.
     for name, dep in deployments.items():
@@ -108,18 +165,25 @@ def main() -> int:
     failures: list[str] = []
     check(render(ENABLE_EVERYTHING), failures)
 
-    # Default values render the api Deployment and Service only.
-    kinds = {d["kind"] for d in render(BASE)}
+    # Default values render the api Deployment and Service only: no mcp, no
+    # frontend, no HPA, no route.
+    defaults = render(BASE)
+    kinds = {d["kind"] for d in defaults}
     stray = sorted(kinds & {"HorizontalPodAutoscaler", "Ingress", "HTTPRoute"})
     if stray:
         failures.append(f"optional resources rendered with default values: {stray}")
+    names = sorted(d["metadata"]["name"] for d in defaults if d.get("kind") in {"Deployment", "Service"})
+    optional = [n for n in names if n.endswith(("-mcp", "-frontend"))]
+    if optional:
+        failures.append(f"optional components rendered with default values: {optional}")
 
     if failures:
         for f in failures:
             print(f"FAIL: {f}")
         return 1
-    print("PASS: the api Service selects exactly one Deployment (component=api); the Deployment selector pins "
-          "the component; HPA, Ingress and HTTPRoute are off by default and target the api")
+    print("PASS: every Service selects exactly one Deployment (api, mcp, frontend); the MCP Deployment "
+          "runs /app/mcp with its own env only and the frontend Deployment renders none; mcp and frontend "
+          "are off by default; HPA, Ingress and HTTPRoute are off by default and target the api")
     return 0
 
 
