@@ -19,7 +19,7 @@ Not every domain event this service raises belongs on the wire. Here every
 domain event of the two aggregates is an integration event (the model marks
 none analytics-only), written to the Postgres outbox in the use case's
 transaction and relayed to `retailnetwork.shipping-and-tracking.events`.
-Before adding a new one, confirm in retail-network-docs `model/model.yaml`
+Before adding a new one, confirm in warehouse-docs `network/model/model.yaml`
 that the model publishes it and that a sibling context needs it.
 
 ### 2. Envelope: CloudEvents 1.0, structured mode — MANDATORY

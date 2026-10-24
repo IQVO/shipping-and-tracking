@@ -8,7 +8,7 @@ This project is a domain-driven design study. It is not associated with, endorse
 
 Issues shipping labels (the only place outside customer-ordering that ever sees a ship-to address) and owns each package's journey: one customer-visible timeline consolidated from vendor handover, load and delivery facts, ending in delivered, returned or lost.
 
-The design is proposed in [retail-network-docs](https://iqvo.github.io/retail-network-docs/contexts/shipping-and-tracking); `model/model.yaml` there is the single source of truth. This repository is a service of the retail network, not of the warehouse-systems fleet; the fleet reaches the network only through the `vendor-connectivity` Vendor API. The decisions this repository took where the model is silent are in [`docs/adr`](docs/adr/index.md) (ADR 0002 lists 30 numbered assumptions).
+The design is proposed in [retail-network docs](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking); `model/model.yaml` there is the single source of truth. This repository is a service of the retail network, not of the warehouse-systems fleet; the fleet reaches the network only through the `vendor-connectivity` Vendor API. The decisions this repository took where the model is silent are in [`docs/adr`](docs/adr/index.md) (ADR 0002 lists 30 numbered assumptions).
 
 ## What it does
 
