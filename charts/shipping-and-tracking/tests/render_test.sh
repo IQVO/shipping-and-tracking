@@ -206,4 +206,67 @@ for opt in HorizontalPodAutoscaler Ingress HTTPRoute; do
   grep -q "kind: $opt" <<<"$on" || fail "$opt does not render when enabled"
 done
 
+# --- optional components (ADR 0006 mcp, ADR 0007 web remote) -------------------
+# mcp and frontend are OFF by default too: a default render names neither.
+for c in mcp frontend; do
+  if grep -q "app.kubernetes.io/component: $c\$" <<<"$default_render"; then
+    fail "the $c component must not render while its enabled flag is false"
+  fi
+done
+
+# binary_env_of <files>: the env literals one binary reads.
+binary_env_of() {
+  local f
+  for f in "$@"; do
+    grep -ohE '[Gg]etenv\("[A-Z][A-Z0-9_]*"' "$f" || true
+  done | sed -E 's/.*"([A-Z0-9_]+)".*/\1/' | sort -u
+}
+# assert_env_rendered <rendered> <label> <vars...>
+assert_env_rendered() {
+  local rendered="$1" label="$2"; shift 2
+  local var
+  for var in "$@"; do
+    grep -q "name: $var\$" <<<"$rendered" || fail "$label does not render $var, which its binary reads"
+  done
+}
+
+# mcp: its own env, never the api ConfigMap, never Kafka or a write seam (ADR 0006).
+mcp_dep="$(tpl "${base[@]}" --set mcp.enabled=true --show-only templates/mcp-deployment.yaml)"
+grep -q 'app.kubernetes.io/component: mcp' <<<"$mcp_dep" || fail "the mcp Deployment was not rendered with mcp.enabled=true"
+grep -q 'command: \["/app/mcp"\]' <<<"$mcp_dep" || fail "the mcp Deployment must run /app/mcp"
+if grep -q 'configMapRef:' <<<"$mcp_dep"; then fail "mcp-deployment.yaml must not mount the api ConfigMap"; fi
+if grep -Eq 'name: (KAFKA_BROKERS|EVENT_PUBLISHER|OUTBOX_[A-Z_]+|[A-Z]+_CONSUMER_GROUP|SHIP_TO_ENCRYPTION_KEY|STOP_KEY_SECRET|CUSTOMER_ORDERING_URL)$' <<<"$mcp_dep"; then
+  fail "the mcp Deployment must not get Kafka/relay/consumer/crypto/customer-ordering env (read-only, never dials Kafka)"
+fi
+# shellcheck disable=SC2207
+mcp_vars=($(binary_env_of "$repo_dir/cmd/mcp/main.go"))
+(( ${#mcp_vars[@]} >= 3 )) || fail "found only ${#mcp_vars[@]} env literals in cmd/mcp/main.go; the scan is looking in the wrong place"
+assert_env_rendered "$mcp_dep" "the mcp Deployment" "${mcp_vars[@]}"
+# The mcp Service pins component=mcp; the Kong route is opt-in and rewrites to /mcp.
+mcp_all="$(tpl "${base[@]}" --set mcp.enabled=true --show-only templates/mcp-deployment.yaml --show-only templates/mcp-service.yaml)"
+[[ "$(grep -c 'kind: Service' <<<"$mcp_all")" == 1 ]] || fail "the mcp Service was not rendered with mcp.enabled=true"
+if grep -q 'kind: HTTPRoute' <<<"$mcp_all"; then fail "the mcp HTTPRoute must not render while mcp.route.enabled is false"; fi
+mcp_route="$(tpl "${base[@]}" --set mcp.enabled=true --set mcp.route.enabled=true --show-only templates/mcp-route.yaml)"
+grep -q 'kind: HTTPRoute' <<<"$mcp_route" || fail "the mcp HTTPRoute was not rendered with mcp.route.enabled=true"
+grep -q 'replacePrefixMatch: /mcp' <<<"$mcp_route" || fail "the mcp HTTPRoute must rewrite its prefix to /mcp"
+grep -q 'value: /api/mcp/shipping-and-tracking' <<<"$mcp_route" || fail "the mcp HTTPRoute must listen on /api/mcp/shipping-and-tracking"
+
+# The web remote: its own nginx Deployment + ClusterIP Service, NO env at all,
+# and no route in this chart (the Nginx web gateway owns /mfes/shipping-and-tracking/).
+frontend_dep="$(tpl "${base[@]}" --set frontend.enabled=true --show-only templates/frontend-deployment.yaml)"
+frontend_svc="$(tpl "${base[@]}" --set frontend.enabled=true --show-only templates/frontend-service.yaml)"
+grep -q 'app.kubernetes.io/component: frontend' <<<"$frontend_dep" || fail "the frontend Deployment was not rendered with frontend.enabled=true"
+grep -q 'type: ClusterIP' <<<"$frontend_svc" || fail "the frontend Service must stay ClusterIP"
+if grep -Eq 'name: [A-Z_]+$' <<<"$frontend_dep"; then fail "the frontend Deployment must render no env (static bytes, nothing configured)"; fi
+
+# ALL optional components render TOGETHER (ct lint's values file).
+together="$(tpl -f "$chart_dir/ci/all-components-values.yaml")"
+for component in api mcp frontend; do
+  grep -q "app.kubernetes.io/component: $component\$" <<<"$together" || fail "the full render lacks the $component component"
+done
+[[ "$(grep -c '^kind: Deployment' <<<"$together")" == 3 ]] || fail "the full render must carry exactly the api, mcp and frontend Deployments"
+if grep -E 'kind: (Ingress|HTTPRoute)' <<<"$together" | grep -q frontend; then
+  fail "frontend routing must not live in this chart"
+fi
+
 echo "PASS: shipping-and-tracking chart render assertions"

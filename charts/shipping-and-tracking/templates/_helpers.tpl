@@ -202,3 +202,12 @@ Deployment includes it, so a mis-set release fails `helm template`.
 {{- include "shipping-and-tracking.requireNoInMemoryEnv" . -}}
 {{- include "shipping-and-tracking.requireGracePeriod" . -}}
 {{- end -}}
+
+{{/*
+Fully qualified name of the MCP server (cmd/mcp) Deployment/Service: a second,
+read-only deployable beside the api (ADR 0006). The component label separates
+it from the api pod so a Service never selects two Deployments.
+*/}}
+{{- define "shipping-and-tracking.mcpFullname" -}}
+{{- include "shipping-and-tracking.fullname" . }}-mcp
+{{- end }}
