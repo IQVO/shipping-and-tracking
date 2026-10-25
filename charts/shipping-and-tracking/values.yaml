@@ -1,5 +1,7 @@
-# Default values for shipping-and-tracking. One component: the api Deployment
-# (cmd/api: HTTP, outbox relay, four Kafka consumers and the periodic jobs).
+# Default values for shipping-and-tracking. Default component: the api
+# Deployment (cmd/api: HTTP, outbox relay, four Kafka consumers and the
+# periodic jobs). Two optional components, both off by default: the read-only
+# MCP server (cmd/mcp, ADR 0006) and the web remote (web/, ADR 0007).
 
 replicaCount: 1
 
@@ -181,6 +183,71 @@ readinessProbe:
 # drain bound 10s = 35s with the default delay. The chart refuses a grace
 # period that is not GREATER than 30s + the drain delay.
 terminationGracePeriodSeconds: 45
+
+# The read-only MCP server (cmd/mcp, ADR 0006): Streamable HTTP on :8090,
+# tool get_journey over the same Postgres the api owns. It runs the boot
+# migrations itself, dials no Kafka, runs no consumer, relay or job, and has
+# no auth (fleet-wide revert 2026-09-11).
+mcp:
+  enabled: false
+  replicaCount: 1
+  httpAddr: ":8090"                  # MCP_ADDR
+  # SERVICE_VERSION / ENVIRONMENT: reported at boot (informational).
+  serviceVersion: "dev"
+  environment: "development"
+  service:
+    type: ClusterIP
+    port: 8090
+    targetPort: 8090
+  # Kong exposure: /api/mcp/shipping-and-tracking -> Service :8090, prefix
+  # rewritten to /mcp. Needs the Gateway parentRef from warehouse-infra.
+  route:
+    enabled: false
+    path: "/api/mcp/shipping-and-tracking"
+    parentRefs:
+      - name: ""
+        namespace: ""
+        sectionName: "http"
+  extraEnv: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# web/ (shipping_mfe): the Module Federation remote served by its own nginx
+# pod, reached through warehouse-infra's Nginx web gateway at
+# /mfes/shipping-and-tracking/ (ADR 0007). Never routed by this chart;
+# ClusterIP only. The Deployment renders NO env: nothing about the remote is
+# configured in the cluster.
+frontend:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: warehouse/shipping-and-tracking-frontend
+    pullPolicy: IfNotPresent
+    tag: ""
+  service:
+    port: 80
+    targetPort: 8080
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    fsGroup: 101
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 
 nodeSelector: {}
 tolerations: []

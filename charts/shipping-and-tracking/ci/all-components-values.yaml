@@ -1,0 +1,40 @@
+# Used by `helm lint` / `ct lint`: every optional component set at once
+# (api + mcp + mcp route + frontend), on top of the mandatory runtime values
+# of ci/default-values.yaml (database, Kafka, crypto, customer-ordering and
+# the four consumer groups).
+database:
+  existingSecret: "shipping-and-tracking-db"
+kafka:
+  brokers: "kafka-0.kafka.warehouse-systems.svc.cluster.local:9092,kafka-1.kafka.warehouse-systems.svc.cluster.local:9092"
+crypto:
+  shipToEncryptionKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  stopKeySecret: "ci-dummy-stop-key-secret"
+config:
+  logLevel: "debug"
+  customerOrderingUrl: "http://customer-ordering.example.invalid"
+  vendorConsumerGroup: "shipping-and-tracking-vendor"
+  linehaulConsumerGroup: "shipping-and-tracking-linehaul"
+  lastmileConsumerGroup: "shipping-and-tracking-lastmile"
+  catalogConsumerGroup: "shipping-and-tracking-catalog"
+gatewayApi:
+  enabled: true
+  parentRefs:
+    - name: warehouse-gateway
+      namespace: kong
+      sectionName: http
+  hosts:
+    - path: /api/shipping-and-tracking
+      pathType: PathPrefix
+autoscaling:
+  api:
+    enabled: true
+mcp:
+  enabled: true
+  route:
+    enabled: true
+    parentRefs:
+      - name: warehouse-gateway
+        namespace: kong
+        sectionName: http
+frontend:
+  enabled: true

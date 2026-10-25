@@ -1,0 +1,97 @@
+[
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read the customer-visible journey of one package by tracking number: the state (LABELLED, HANDED_OVER, IN_TRANSIT, AT_STATION, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST or VOIDED), the poNumber, assignmentId, orderId and tier of its label, handedOverAt and deliveredAt when they happened, and every stored scan in the order they were recorded -- each with its scanType, the node it was seen at, when, and applied (false for a scan stored out of order or without an edge from the state it met). Read-only; an unknown tracking number fails with not-found.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "trackingNumber": {
+          "description": "the tracking number of the package, e.g. RN0123456789ABCDEF",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trackingNumber"
+      ],
+      "type": "object"
+    },
+    "name": "get_journey",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "assignmentId": {
+          "type": "string"
+        },
+        "deliveredAt": {
+          "type": "string"
+        },
+        "handedOverAt": {
+          "type": "string"
+        },
+        "orderId": {
+          "type": "string"
+        },
+        "poNumber": {
+          "type": "string"
+        },
+        "scans": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "applied": {
+                "type": "boolean"
+              },
+              "at": {
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "scanId": {
+                "type": "string"
+              },
+              "scanType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "scanId",
+              "nodeId",
+              "scanType",
+              "at",
+              "applied"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "tier": {
+          "type": "string"
+        },
+        "trackingNumber": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "trackingNumber",
+        "state",
+        "poNumber",
+        "assignmentId",
+        "orderId",
+        "tier",
+        "scans"
+      ],
+      "type": "object"
+    }
+  }
+]
