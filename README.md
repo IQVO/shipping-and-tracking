@@ -83,7 +83,14 @@ gateway mount `/mfes/shipping-and-tracking/`, image built from `web/Dockerfile`
 (`@warehouse/ui-kit` supplied as the `uikit` named BuildKit context). Inside `web/`:
 `npm ci && npm run lint && npx tsc -b && npm test && npm run build`.
 
+## Observability
+
+Logs, metrics and traces follow the fleet standard ([ADR 0008](docs/adr/0008-fleet-observability-standard.md)): JSON logs on stdout carry `trace_id`/`span_id`
+and a `request_id`; `cmd/api` and `cmd/mcp` export OTLP/gRPC to the Collector (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `SERVICE_VERSION`, `ENVIRONMENT`;
+export never blocks, so no Collector costs telemetry, nothing else) with HTTP request duration, Go runtime metrics and the business counter
+`shipping.labels.issued` (`outcome`, `reason`); the trace continues across Kafka in the `traceparent` header of each published event and is picked up by the
+consumers. The chart's `otel.*` values render the env.
+
 ## Not done yet
 
 The items of [`docs/before-first-release.md`](docs/before-first-release.md) that need infrastructure (repository secrets).
-Traces and metrics are not built.
