@@ -109,6 +109,10 @@ func run(ctx context.Context, env func(string) string) error {
 	defer pool.Close()
 
 	deps := buildDeps(pool, cfg)
+	// The business counter binds to the MeterProvider telemetry.Setup installed.
+	if deps.Metrics, err = telemetry.NewLabelMetrics(); err != nil {
+		return err
+	}
 	readiness := inboundhttp.NewReadiness(inboundhttp.DefaultReadinessTTL, inboundhttp.DefaultReadinessTimeout,
 		inboundhttp.Dependency{Name: "postgres", Check: pool.Ping},
 		inboundhttp.Dependency{Name: "kafka", Check: outboundkafka.NewBrokerCheck(cfg.brokers).Check},

@@ -132,3 +132,19 @@ type StopKeyer interface {
 type EventEncoder interface {
 	Encode(events ...shared.Event) ([]outbox.Message, error)
 }
+
+// LabelMetrics records the business outcome of every label-issue attempt (Tier 2
+// of the fleet metrics convention). The IssueLabel use case calls it once per
+// attempt: LabelIssued when a label and its journey were stored, LabelRejected
+// otherwise, with the problem slug that says why (the `type` suffix the REST
+// adapter answers with: "ship-to-unavailable", "label-already-issued", ...).
+// A replayed request never reaches the use case (the Idempotency-Key middleware
+// answers it), so it is not an attempt. The implementation lives in
+// internal/adapters/outbound/telemetry; a nil Deps.Metrics records nothing.
+type LabelMetrics interface {
+	// LabelIssued counts a label that was issued.
+	LabelIssued(ctx context.Context)
+	// LabelRejected counts an attempt that issued no label; reason is a stable,
+	// low-cardinality slug.
+	LabelRejected(ctx context.Context, reason string)
+}
