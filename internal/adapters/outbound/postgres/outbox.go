@@ -208,5 +208,5 @@ func (o *Outbox) Append(ctx context.Context, events ...shared.Event) error {
 	if err != nil {
 		return err
 	}
-	return o.repo.Insert(ctx, msgs...)
+	return o.repo.Insert(ctx, withTraceHeaders(ctx, msgs)...)
 }

@@ -1,0 +1,87 @@
+//go:build integration
+
+package postgres_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
+	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/postgres"
+	"github.com/claudioed/shipping-and-tracking/internal/application/outbox"
+	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
+	"github.com/claudioed/shipping-and-tracking/internal/testing/pgtest"
+)
+
+// stubEncoder yields one fixed message whatever the events, so the test pins
+// only what the repository adds to it.
+type stubEncoder struct{ n *int }
+
+func (e stubEncoder) Encode(...shared.Event) ([]outbox.Message, error) {
+	*e.n++
+	return []outbox.Message{{
+		EventID: fmt.Sprintf("evt-trace-%d", *e.n), Topic: "t", EventType: "x.Probed", Subject: "o-1", Key: []byte("o-1"), Value: []byte(`{}`),
+		Headers: []outbox.Header{{Key: "content-type", Value: "application/cloudevents+json; charset=UTF-8"}},
+	}}, nil
+}
+
+// probeEvent is the one event the stub encoder is handed.
+type probeEvent struct{ shared.Header }
+
+func (probeEvent) EventName() string { return "Probed" }
+func (probeEvent) Entity() string    { return "journey" }
+func (probeEvent) SubjectID() string { return "o-1" }
+
+// An Append made under a span stores that span's traceparent in the row's
+// headers, next to the encoder's own header, and a span-less Append stores none.
+func TestOutboxAppendStoresTheActiveTraceparent(t *testing.T) {
+	previous := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(previous) })
+
+	pool := pgtest.NewPool(t)
+	repo := postgres.NewOutbox(postgres.NewOutboxRepo(pool), stubEncoder{n: new(int)})
+	event := probeEvent{}
+
+	ctx, span := sdktrace.NewTracerProvider().Tracer("test").Start(context.Background(), "POST /labels")
+	defer span.End()
+	if err := repo.Append(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Append(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := pool.Query(context.Background(), `SELECT headers::text FROM outbox_events ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var stored [][]struct{ Key, Value string }
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		var hs []struct{ Key, Value string }
+		if err := json.Unmarshal([]byte(raw), &hs); err != nil {
+			t.Fatal(err)
+		}
+		stored = append(stored, hs)
+	}
+	if len(stored) != 2 {
+		t.Fatalf("stored %d rows, want 2", len(stored))
+	}
+	want := "00-" + span.SpanContext().TraceID().String() + "-" + span.SpanContext().SpanID().String() + "-01"
+	if len(stored[0]) != 2 || stored[0][0].Key != "content-type" || stored[0][1].Key != "traceparent" || stored[0][1].Value != want {
+		t.Errorf("row under a span has headers %v, want content-type and traceparent %s", stored[0], want)
+	}
+	if len(stored[1]) != 1 || stored[1][0].Key != "content-type" {
+		t.Errorf("row without a span has headers %v, want only content-type", stored[1])
+	}
+}

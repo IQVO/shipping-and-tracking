@@ -15,7 +15,7 @@ import (
 func readyzOf(t *testing.T, g *inbound.Readiness) (int, string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	inbound.NewRouter(&inbound.Server{Readiness: g}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	inbound.NewRouter(&inbound.Server{Readiness: g}, nil, "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	return rec.Code, rec.Body.String()
 }
 

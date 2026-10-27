@@ -23,6 +23,10 @@
 //	HOUSEKEEPING_INTERVAL       ship-to purge and technical-table purge period (default 1h)
 //	SHUTDOWN_DRAIN_DELAY        wait after flipping /readyz before closing (default 5s)
 //	LOG_LEVEL                   debug|info|warn|error (default info)
+//	OTEL_SERVICE_NAME           service.name of spans and metrics (default shipping-and-tracking)
+//	OTEL_EXPORTER_OTLP_ENDPOINT Collector OTLP/gRPC endpoint (default telemetry.DefaultEndpoint); export never blocks
+//	SERVICE_VERSION             service.version (default dev)
+//	ENVIRONMENT                 deployment.environment.name (default local)
 //
 // GET /readyz is 200 only while Postgres answers a ping AND a Kafka broker
 // answers a metadata request (verdict cached 3s, bounded 2s); /healthz is
@@ -52,6 +56,7 @@ import (
 	outboxrelay "github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/outbox"
 	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/postgres"
 	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/postgres/pgtx"
+	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/telemetry"
 	"github.com/claudioed/shipping-and-tracking/internal/application/usecases"
 	"github.com/claudioed/shipping-and-tracking/internal/bootretry"
 	"github.com/claudioed/shipping-and-tracking/internal/scheduler"
@@ -75,7 +80,9 @@ func main() {
 // cancelled (the integration test stops the real entry point that way). env is
 // os.Getenv in production.
 func run(ctx context.Context, env func(string) string) error {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: newLevel(env("LOG_LEVEL"))}))
+	// The handler is wrapped so a record written with a span-carrying context
+	// (the *Context slog variants) also carries trace_id and span_id.
+	logger := slog.New(telemetry.WithTraceContext(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: newLevel(env("LOG_LEVEL"))})))
 	slog.SetDefault(logger)
 
 	// Misconfiguration is refused before anything is opened or bound.
@@ -83,6 +90,16 @@ func run(ctx context.Context, env func(string) string) error {
 	if err != nil {
 		return err
 	}
+	// Telemetry comes up before the router is built (otelchimetric binds the
+	// global MeterProvider at construction) and is flushed LAST: deferred before
+	// the pool, so the final spans of the drain still leave the process.
+	tel := loadTelemetryEnv(env)
+	flushTelemetry, err := startTelemetry(logger, tel)
+	if err != nil {
+		return err
+	}
+	defer flushTelemetry()
+
 	pool, err := openPool(ctx, cfg, logger)
 	if err != nil {
 		return err
@@ -92,13 +109,17 @@ func run(ctx context.Context, env func(string) string) error {
 	defer pool.Close()
 
 	deps := buildDeps(pool, cfg)
+	// The business counter binds to the MeterProvider telemetry.Setup installed.
+	if deps.Metrics, err = telemetry.NewLabelMetrics(); err != nil {
+		return err
+	}
 	readiness := inboundhttp.NewReadiness(inboundhttp.DefaultReadinessTTL, inboundhttp.DefaultReadinessTimeout,
 		inboundhttp.Dependency{Name: "postgres", Check: pool.Ping},
 		inboundhttp.Dependency{Name: "kafka", Check: outboundkafka.NewBrokerCheck(cfg.brokers).Check},
 	)
 	httpServer := &http.Server{
 		Addr:              cfg.httpAddr,
-		Handler:           inboundhttp.NewRouter(buildServer(deps, pool, readiness)),
+		Handler:           inboundhttp.NewRouter(buildServer(deps, pool, readiness), logger, tel.serviceName),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

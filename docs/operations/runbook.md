@@ -44,6 +44,9 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 | --- | --- | --- |
 | `HTTP_ADDR` | `config.httpAddr` | `:8080` |
 | `LOG_LEVEL` | `config.logLevel` | `info` (debug\|warn\|error) |
+| `OTEL_SERVICE_NAME` | `otel.serviceName` | `shipping-and-tracking` (`-mcp` suffix for the mcp component); ADR 0008 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.endpoint` | `localhost:4317` without the chart; export never blocks |
+| `SERVICE_VERSION` / `ENVIRONMENT` | `image.tag` (appVersion when empty) / `environment` | `dev` / `local` without the chart |
 | `EVENT_PUBLISHER` | `config.eventPublisher` | `kafka` only; `log` is refused at render and at boot |
 | `KAFKA_BROKERS` | `kafka.brokers` | REQUIRED |
 | `CUSTOMER_ORDERING_URL` | `config.customerOrderingUrl` | REQUIRED, absolute http(s) URL |
@@ -62,7 +65,7 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 ## Alerts and dashboards
 
 - Grafana dashboard uid `warehouse-shipping-and-tracking`; pod-restart alerts exist for this Deployment.
-- No business metrics are instrumented yet: business-metric panels stay empty until the service instruments itself. Judge flow today from pod health, Loki logs and the `outbox_events` table.
+- One business metric is instrumented (ADR 0008): `shipping.labels.issued` by `outcome` (`issued`/`rejected`) and `reason`. A rising `ship-to-unavailable` means customer-ordering cannot be reached; a rising `internal-error` means this service is failing. Dashboards come from warehouse-infra.
 
 ## Failure modes
 
