@@ -13,3 +13,5 @@ The *Status* column is copied from each ADR's own `## Status` section.
 | [0005](./0005-runtime-configuration-jobs-and-retention.md) | runtime: configuration, periodic jobs and retention of the technical tables | Accepted (2026-10-23) |
 | [0006](./0006-mcp-server-adoption.md) | a read-only MCP server | Accepted (2026-10-24) |
 | [0007](./0007-console-remote.md) | the console remote (shipping_mfe): a read-only screen over the existing REST | Accepted (2026-10-24) |
+| [0008](./0008-fleet-observability-standard.md) | adopt the fleet observability standard (logs, metrics, traces) | Accepted (2026-10-26) |
+| [0009](./0009-a2a-inbound-adapter.md) | an A2A inbound adapter: one read-only skill over the existing query | Accepted (2026-10-29) |

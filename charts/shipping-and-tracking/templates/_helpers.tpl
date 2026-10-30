@@ -154,10 +154,13 @@ committed offsets; it must never be derived from the pod name.
 
 {{/*
 extraEnv may not bring back a log publisher or an in-memory mode: no
-EVENT_PUBLISHER other than kafka and no *_MODE variable at all.
+EVENT_PUBLISHER other than kafka and no *_MODE variable at all. It may not set
+a variable the chart renders itself (the observability quartet) either, or the
+same name would be set twice. Checked for the api, the mcp and the a2a lists.
 */}}
 {{- define "shipping-and-tracking.requireNoInMemoryEnv" -}}
-{{- range .Values.extraEnv -}}
+{{- $owned := list "ENVIRONMENT" "SERVICE_VERSION" "OTEL_SERVICE_NAME" "OTEL_EXPORTER_OTLP_ENDPOINT" -}}
+{{- range concat .Values.extraEnv .Values.mcp.extraEnv .Values.a2a.extraEnv -}}
 {{- $name := toString .name -}}
 {{- $value := toString (default "" .value) -}}
 {{- if and (eq $name "EVENT_PUBLISHER") (ne $value "kafka") -}}
@@ -165,6 +168,9 @@ EVENT_PUBLISHER other than kafka and no *_MODE variable at all.
 {{- end -}}
 {{- if hasSuffix "_MODE" $name -}}
 {{- fail (printf "extraEnv sets %s - *_MODE variables do not exist in shipping-and-tracking: it runs on real Postgres and real Kafka only, with no permissive or off mode." $name) -}}
+{{- end -}}
+{{- if has $name $owned -}}
+{{- fail (printf "extraEnv sets %s - the chart renders it itself (otel.*, environment, image.tag); set the value, not a second env var." $name) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -210,4 +216,14 @@ it from the api pod so a Service never selects two Deployments.
 */}}
 {{- define "shipping-and-tracking.mcpFullname" -}}
 {{- include "shipping-and-tracking.fullname" . }}-mcp
+{{- end }}
+
+{{/*
+Fully qualified name of the A2A server (cmd/a2a) Deployment/Service: a third,
+read-only deployable beside the api and the mcp server (ADR 0009). The
+component label separates it from the other pods so a Service never selects
+two Deployments.
+*/}}
+{{- define "shipping-and-tracking.a2aFullname" -}}
+{{- include "shipping-and-tracking.fullname" . }}-a2a
 {{- end }}

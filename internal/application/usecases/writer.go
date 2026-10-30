@@ -30,7 +30,24 @@ type Deps struct {
 	ShipTo    ports.ShipToGateway
 	Sealer    ports.ShipToSealer
 	StopKeys  ports.StopKeyer
+	// Metrics records the business outcome of each label-issue attempt; nil
+	// records nothing, so unit tests need no wiring.
+	Metrics ports.LabelMetrics
 }
+
+// metrics returns the configured LabelMetrics or a no-op.
+func (d Deps) metrics() ports.LabelMetrics {
+	if d.Metrics != nil {
+		return d.Metrics
+	}
+	return noMetrics{}
+}
+
+// noMetrics is the LabelMetrics of a Deps without one.
+type noMetrics struct{}
+
+func (noMetrics) LabelIssued(context.Context)           {}
+func (noMetrics) LabelRejected(context.Context, string) {}
 
 // writer is what every command embeds.
 type writer struct{ Deps }

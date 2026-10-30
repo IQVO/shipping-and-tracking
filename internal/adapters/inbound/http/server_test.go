@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +25,11 @@ type fixture struct {
 	gateway *memory.ShipToGateway
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { return newFixtureLogged(t, nil) }
+
+// newFixtureLogged is newFixture with the router's request logger set (nil
+// means slog.Default()).
+func newFixtureLogged(t *testing.T, logger *slog.Logger) *fixture {
 	t.Helper()
 	s := memory.NewStore()
 	gw := memory.NewShipToGateway()
@@ -37,7 +42,7 @@ func newFixture(t *testing.T) *fixture {
 	srv := httptest.NewServer(inbound.NewRouter(&inbound.Server{
 		IssueLabel: usecases.NewIssueLabel(d), VoidLabel: usecases.NewVoidLabel(d),
 		RecordScan: usecases.NewRecordScan(d), GetJourney: usecases.NewGetJourney(d),
-	}))
+	}, logger, ""))
 	t.Cleanup(srv.Close)
 	return &fixture{srv: srv, store: s, gateway: gw}
 }
