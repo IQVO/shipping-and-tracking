@@ -1,5 +1,7 @@
 # shipping-and-tracking
 
+[![CI](https://github.com/IQVO/shipping-and-tracking/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/IQVO/shipping-and-tracking/actions/workflows/ci.yml?query=branch%3Adevelop) [![coverage gate](https://img.shields.io/badge/coverage%20gate-90%25-brightgreen)](https://github.com/IQVO/shipping-and-tracking/blob/develop/Makefile) [![Go](https://img.shields.io/badge/go-1.27.3-00ADD8?logo=go&logoColor=white)](https://github.com/IQVO/shipping-and-tracking/blob/develop/go.mod) [![release](https://img.shields.io/github/v/release/IQVO/shipping-and-tracking?sort=semver)](https://github.com/IQVO/shipping-and-tracking/releases) [![docs](https://img.shields.io/badge/docs-iqvo.github.io-blue)](https://iqvo.github.io/shipping-and-tracking/) [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/IQVO/shipping-and-tracking/blob/develop/LICENSE)
+
 Retail network, bounded context **Shipping & Tracking** (Generic, logistics tier).
 
 Issues shipping labels (the only place outside customer-ordering that ever sees a ship-to address) and owns each package's journey: one customer-visible timeline consolidated from vendor handover, load and delivery facts, ending in delivered, returned or lost.
