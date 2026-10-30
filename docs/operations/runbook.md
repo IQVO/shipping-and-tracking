@@ -21,6 +21,8 @@ One `api` Deployment, one process (`cmd/api/main.go`, the composition root — t
   - `silence-sweep` (`SILENCE_SWEEP_INTERVAL`, default 5m, runs on start): the ExceptionOnSilence policy — a watched journey silent past its tier/state window (6h same-day, 24h next-day, 48h two-day, 72h standard, 12h out-for-delivery; `internal/domain/journey/types.go`) gets a `NO_SCAN` exception raised; `PackageLost` 48h after an unanswered exception on an in-transit journey. Log line: `raised=<n> lost=<n> conflicts=<n>`.
   - `ship-to-purge` and `housekeeping` (both `HOUSEKEEPING_INTERVAL`, default 1h, both run on start): `ship-to-purge` deletes `ship_to_snapshots` 30 days after the journey closed (ADR 0002 A9); `housekeeping` purges the technical tables per ADR 0005 — `idempotency_keys` after 24h, already-relayed `outbox_events` rows after 7d, `processed_events` (inbox) after 30d (`cmd/api/config.go` retention consts).
 
+Two optional read-only deployables run beside it, both off by default: `cmd/mcp` (ADR 0006) and `cmd/a2a` (ADR 0009, the A2A agent: `get_journey` over JSON-RPC at `/` and `/a2a`, Agent Card at `/.well-known/agent-card.json`, `A2A_ADDR` default `:8093`). Neither dials Kafka nor runs the relay, the consumers or the jobs; `cmd/a2a` refuses to boot without `DATABASE_URL` and `A2A_AGENT_URL`, and with `a2a.enabled=true` the chart defaults `A2A_AGENT_URL` to the component's in-cluster Service URL (override with `a2a.agentUrl`).
+
 Any consumer, job loop or the relay returning on its own makes the process exit non-zero so the orchestrator restarts it (`cmd/api/main.go` `watchWorkers`; a worker death logs `consumer stopped` / `outbox relay stopped`). Shutdown order: `/readyz` flips 503 → wait `SHUTDOWN_DRAIN_DELAY` (5s) → HTTP drain (≤10s) → consumers+jobs (≤10s) → the relay LAST so nothing committed is stranded (≤10s); the chart refuses a `terminationGracePeriodSeconds` not greater than 30s + the delay (45s default).
 
 ## Dependencies
@@ -44,7 +46,7 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 | --- | --- | --- |
 | `HTTP_ADDR` | `config.httpAddr` | `:8080` |
 | `LOG_LEVEL` | `config.logLevel` | `info` (debug\|warn\|error) |
-| `OTEL_SERVICE_NAME` | `otel.serviceName` | `shipping-and-tracking` (`-mcp` suffix for the mcp component); ADR 0008 |
+| `OTEL_SERVICE_NAME` | `otel.serviceName` | `shipping-and-tracking` (`-mcp` / `-a2a` suffix for the mcp and a2a components); ADR 0008 |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.endpoint` | `localhost:4317` without the chart; export never blocks |
 | `SERVICE_VERSION` / `ENVIRONMENT` | `image.tag` (appVersion when empty) / `environment` | `dev` / `local` without the chart |
 | `EVENT_PUBLISHER` | `config.eventPublisher` | `kafka` only; `log` is refused at render and at boot |

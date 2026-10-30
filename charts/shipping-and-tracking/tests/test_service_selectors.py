@@ -6,7 +6,7 @@ creates. A Service that selects on those two alone would select every
 component. Every Deployment here carries `app.kubernetes.io/component` in
 selector.matchLabels and its pod labels, and every Service selects on it, so
 each Service selects EXACTLY ONE Deployment. Components: api (always), mcp
-(ADR 0006, default off) and frontend (the nginx pod serving the shipping_mfe
+(ADR 0006, default off), a2a (ADR 0009, default off) and frontend (the nginx pod serving the shipping_mfe
 remote, ADR 0007, default off), all rendered TOGETHER here. The test also
 renders with every optional template on (HPA, Ingress, HTTPRoute) and fails
 if a workload ever appears without its own selector.
@@ -31,11 +31,12 @@ ENABLE_EVERYTHING = BASE + [
     "--set", "ingress.enabled=true",
     "--set", "gatewayApi.enabled=true",
     "--set", "mcp.enabled=true",
+    "--set", "a2a.enabled=true",
     "--set", "frontend.enabled=true",
 ]
 
-# The MCP server is read-only: no Kafka, no relay, no consumers, no crypto,
-# no customer-ordering.
+# The MCP and A2A servers are read-only: no Kafka, no relay, no consumers, no
+# crypto, no customer-ordering.
 MCP_STRAY = {
     "KAFKA_BROKERS", "EVENT_PUBLISHER", "OUTBOX_RELAY_INTERVAL", "OUTBOX_MAX_ATTEMPTS",
     "VENDOR_CONSUMER_GROUP", "LINEHAUL_CONSUMER_GROUP", "LASTMILE_CONSUMER_GROUP",
@@ -87,7 +88,7 @@ def check(docs: list[dict], failures: list[str]) -> None:
     services = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Service"}
     deployments = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Deployment"}
 
-    want = sorted([RELEASE] + [f"{RELEASE}-{c}" for c in ("mcp", "frontend")])
+    want = sorted([RELEASE] + [f"{RELEASE}-{c}" for c in ("mcp", "a2a", "frontend")])
     if sorted(deployments) != want:
         failures.append(f"expected the Deployments {want}, got {sorted(deployments)}")
     if sorted(services) != want:
@@ -111,6 +112,23 @@ def check(docs: list[dict], failures: list[str]) -> None:
                 failures.append(f"the MCP Deployment does not render {need}")
     if not pins(services.get(f"{RELEASE}-mcp"), "mcp"):
         failures.append("the MCP Service must exist and pin component=mcp")
+
+    # The A2A Deployment runs /app/a2a with its own env, none of the api's.
+    a2a = deployments.get(f"{RELEASE}-a2a")
+    if a2a is None:
+        failures.append("the A2A Deployment was not rendered with a2a.enabled=true")
+    else:
+        if command_of(a2a) != ["/app/a2a"]:
+            failures.append("the A2A Deployment must run /app/a2a")
+        env = set(env_names(a2a))
+        stray = MCP_STRAY & env
+        if stray:
+            failures.append(f"the A2A Deployment must not get Kafka/relay/consumer/crypto env (it is read-only and never dials Kafka): {sorted(stray)}")
+        for need in ("DATABASE_URL", "MIGRATIONS_DATABASE_URL", "A2A_ADDR", "A2A_AGENT_URL", "LOG_LEVEL", "SERVICE_VERSION", "ENVIRONMENT"):
+            if need not in env:
+                failures.append(f"the A2A Deployment does not render {need}")
+    if not pins(services.get(f"{RELEASE}-a2a"), "a2a"):
+        failures.append("the A2A Service must exist and pin component=a2a")
 
     # The frontend Deployment serves static bytes: NO env at all.
     frontend = deployments.get(f"{RELEASE}-frontend")
@@ -166,14 +184,14 @@ def main() -> int:
     check(render(ENABLE_EVERYTHING), failures)
 
     # Default values render the api Deployment and Service only: no mcp, no
-    # frontend, no HPA, no route.
+    # a2a, no frontend, no HPA, no route.
     defaults = render(BASE)
     kinds = {d["kind"] for d in defaults}
     stray = sorted(kinds & {"HorizontalPodAutoscaler", "Ingress", "HTTPRoute"})
     if stray:
         failures.append(f"optional resources rendered with default values: {stray}")
     names = sorted(d["metadata"]["name"] for d in defaults if d.get("kind") in {"Deployment", "Service"})
-    optional = [n for n in names if n.endswith(("-mcp", "-frontend"))]
+    optional = [n for n in names if n.endswith(("-mcp", "-a2a", "-frontend"))]
     if optional:
         failures.append(f"optional components rendered with default values: {optional}")
 
@@ -181,9 +199,9 @@ def main() -> int:
         for f in failures:
             print(f"FAIL: {f}")
         return 1
-    print("PASS: every Service selects exactly one Deployment (api, mcp, frontend); the MCP Deployment "
-          "runs /app/mcp with its own env only and the frontend Deployment renders none; mcp and frontend "
-          "are off by default; HPA, Ingress and HTTPRoute are off by default and target the api")
+    print("PASS: every Service selects exactly one Deployment (api, mcp, a2a, frontend); the MCP and A2A "
+          "Deployments run /app/mcp and /app/a2a with their own env only and the frontend Deployment renders none; "
+          "mcp, a2a and frontend are off by default; HPA, Ingress and HTTPRoute are off by default and target the api")
     return 0
 
 
