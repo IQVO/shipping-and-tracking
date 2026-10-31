@@ -1,0 +1,70 @@
+---
+id: void-label
+title: "Void an issued label (VoidLabel)"
+description: "Moves the label ISSUED to VOIDED, closes the LABELLED journey of the same tracking number as VOIDED and publishes LabelVoided (contracts-delta E16). Refused once the package has been handed over (void-after-handover). Voiding a VOIDED label returns it unchanged and publishes nothing."
+sidebar_label: "Void an issued label (VoidLabel)"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "post api-method"
+info_path: docs/api-reference/rest/shipping-tracking-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Void an issued label (VoidLabel)"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/labels/{labelRef}:void"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Moves the label ISSUED to VOIDED, closes the LABELLED journey of the same tracking number as VOIDED and publishes LabelVoided (contracts-delta E16). Refused once the package has been handed over (void-after-handover). Voiding a VOIDED label returns it unchanged and publishes nothing.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./void-label.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./void-label.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./void-label.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      
