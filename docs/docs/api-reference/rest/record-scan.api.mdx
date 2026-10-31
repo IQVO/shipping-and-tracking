@@ -1,0 +1,70 @@
+---
+id: record-scan
+title: "Record one scan on a package journey (RecordScan)"
+description: "RecordScan over REST. Scans apply in time order; an older scan is stored but does not move the state (409 scan-out-of-order, the scan is kept with applied=false). A scan whose scanType has no edge from the current state is stored with applied=false and answers 409 illegal-transition. A known scanId answers 409 duplicate-scan and stores nothing. A closed journey answers 409 journey-closed."
+sidebar_label: "Record one scan on a package journey (RecordScan)"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "post api-method"
+info_path: docs/api-reference/rest/shipping-tracking-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Record one scan on a package journey (RecordScan)"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/journeys/{trackingNumber}/scans"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+RecordScan over REST. Scans apply in time order; an older scan is stored but does not move the state (409 scan-out-of-order, the scan is kept with applied=false). A scan whose scanType has no edge from the current state is stored with applied=false and answers 409 illegal-transition. A known scanId answers 409 duplicate-scan and stores nothing. A closed journey answers 409 journey-closed.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./record-scan.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./record-scan.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./record-scan.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

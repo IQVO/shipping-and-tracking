@@ -1,0 +1,1 @@
+{"parameters":[{"name":"trackingNumber","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"description":"Client-chosen key (at most 128 characters); a repeat with the same key replays the first response (24 hours).","schema":{"type":"string","maxLength":128}}]}
