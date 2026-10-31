@@ -1,7 +1,8 @@
 # Default values for shipping-and-tracking. Default component: the api
 # Deployment (cmd/api: HTTP, outbox relay, four Kafka consumers and the
 # periodic jobs). Two optional components, both off by default: the read-only
-# MCP server (cmd/mcp, ADR 0006) and the web remote (web/, ADR 0007).
+# MCP server (cmd/mcp, ADR 0006), the A2A server (cmd/a2a, ADR 0009) and the web
+# remote (web/, ADR 0007).
 
 replicaCount: 1
 
@@ -151,8 +152,25 @@ crypto:
 kafka:
   brokers: ""
 
+# Observability (ADR 0008): the fleet pipeline is pod --OTLP/gRPC--> Collector
+# --> Jaeger (traces) and Prometheus (metrics); logs are stdout JSON for Alloy
+# and Loki. Export never blocks, so a Collector that is down costs telemetry and
+# nothing else, but otel.enabled=false renders no OTEL_* env at all (the binaries
+# then fall back to localhost:4317). serviceName is OTEL_SERVICE_NAME of the api;
+# the mcp component gets "<serviceName>-mcp". SERVICE_VERSION is the image tag
+# (appVersion when empty), ENVIRONMENT is `environment`.
+otel:
+  enabled: true
+  endpoint: "otel-collector.observability.svc.cluster.local:4317"
+  serviceName: "shipping-and-tracking"
+
+# ENVIRONMENT of the api: deployment.environment.name on every span, metric and
+# log of the api. (mcp.environment sets the same for the mcp component.)
+environment: "production"
+
 # Extra env vars appended to the api container as a raw list. The chart refuses
-# EVENT_PUBLISHER other than "kafka" and any *_MODE variable here.
+# EVENT_PUBLISHER other than "kafka", any *_MODE variable and any variable the
+# chart renders itself (the OTEL_* / SERVICE_VERSION / ENVIRONMENT quartet).
 extraEnv: []
 
 # The Postgres dial at boot is wrapped in a bounded retry; periodSeconds *
@@ -192,9 +210,11 @@ mcp:
   enabled: false
   replicaCount: 1
   httpAddr: ":8090"                  # MCP_ADDR
-  # SERVICE_VERSION / ENVIRONMENT: reported at boot (informational).
-  serviceVersion: "dev"
-  environment: "development"
+  # SERVICE_VERSION / ENVIRONMENT: the labels cmd/mcp reports at boot and puts on
+  # its telemetry. serviceVersion empty = the image tag (appVersion when empty),
+  # like the api; set it only to override.
+  serviceVersion: ""
+  environment: "production"
   service:
     type: ClusterIP
     port: 8090
@@ -204,6 +224,46 @@ mcp:
   route:
     enabled: false
     path: "/api/mcp/shipping-and-tracking"
+    parentRefs:
+      - name: ""
+        namespace: ""
+        sectionName: "http"
+  extraEnv: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# The read-only A2A server (cmd/a2a, ADR 0009): Agent2Agent JSON-RPC on :8093,
+# skill get_journey over the same Postgres the api owns, the Agent Card at
+# /.well-known/agent-card.json. It runs the boot migrations itself, dials no
+# Kafka, runs no consumer, relay or job, and has no auth (fleet-wide revert
+# 2026-09-11). Default OFF: A2A carries delegation only, never data sync.
+a2a:
+  enabled: false
+  replicaCount: 1
+  httpAddr: ":8093"                  # A2A_ADDR
+  # A2A_AGENT_URL: the absolute http(s) URL the Agent Card advertises. Empty =
+  # this component's own in-cluster Service DNS name,
+  # http://<fullname>-a2a.<namespace>.svc.cluster.local:<service.port>/
+  agentUrl: ""
+  # SERVICE_VERSION / ENVIRONMENT: the labels cmd/a2a reports at boot and puts on
+  # its telemetry (the version is also the Agent Card's). serviceVersion empty =
+  # the image tag (appVersion when empty), like the api; set it only to override.
+  serviceVersion: ""
+  environment: "production"
+  service:
+    type: ClusterIP
+    port: 8093
+    targetPort: 8093
+  # Kong exposure: /api/a2a/shipping-and-tracking -> Service :8093, prefix
+  # rewritten to /. Needs the Gateway parentRef from warehouse-infra.
+  route:
+    enabled: false
+    path: "/api/a2a/shipping-and-tracking"
     parentRefs:
       - name: ""
         namespace: ""

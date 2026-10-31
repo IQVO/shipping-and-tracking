@@ -40,7 +40,7 @@ func pgServer(t *testing.T) (*httptest.Server, *pgtest.Pool, *memory.ShipToGatew
 		Idempotency: func(route string) func(http.Handler) http.Handler {
 			return inbound.RequireIdempotencyKey(pool, pgtx.With, route)
 		},
-	}))
+	}, nil, ""))
 	t.Cleanup(srv.Close)
 	return srv, pool, gw
 }

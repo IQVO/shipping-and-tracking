@@ -1,5 +1,5 @@
 # Used by `helm lint` / `ct lint`: every optional component set at once
-# (api + mcp + mcp route + frontend), on top of the mandatory runtime values
+# (api + mcp + mcp route + a2a + a2a route + frontend), on top of the mandatory runtime values
 # of ci/default-values.yaml (database, Kafka, crypto, customer-ordering and
 # the four consumer groups).
 database:
@@ -29,6 +29,14 @@ autoscaling:
   api:
     enabled: true
 mcp:
+  enabled: true
+  route:
+    enabled: true
+    parentRefs:
+      - name: warehouse-gateway
+        namespace: kong
+        sectionName: http
+a2a:
   enabled: true
   route:
     enabled: true

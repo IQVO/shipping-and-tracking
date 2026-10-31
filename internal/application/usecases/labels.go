@@ -51,8 +51,15 @@ func (c IssueLabelCmd) validate() error {
 // Execute issues the label. Errors: shared.ErrValidation (also for an order
 // customer-ordering does not know), label.ErrLabelAlreadyIssued,
 // label.ErrTrackingNumberTaken (after one retry with a new number),
-// ports.ErrShipToUnavailable.
+// ports.ErrShipToUnavailable. Every call is counted once, as issued or as
+// rejected with the reason (Deps.Metrics).
 func (u *IssueLabel) Execute(ctx context.Context, cmd IssueLabelCmd) (views.Label, error) {
+	v, err := u.execute(ctx, cmd)
+	u.recordOutcome(ctx, err)
+	return v, err
+}
+
+func (u *IssueLabel) execute(ctx context.Context, cmd IssueLabelCmd) (views.Label, error) {
 	if err := cmd.validate(); err != nil {
 		return views.Label{}, err
 	}

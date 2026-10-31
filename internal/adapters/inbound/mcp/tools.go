@@ -85,7 +85,7 @@ func toJourney(v views.Journey) journeyView {
 func (d Deps) getJourney(ctx context.Context, in trackingNumberInput) (journeyView, error) {
 	v, err := d.GetJourney.Execute(ctx, shared.TrackingNumber(in.TrackingNumber))
 	if err != nil {
-		return journeyView{}, mapError(err)
+		return journeyView{}, mapError(ctx, err)
 	}
 	return toJourney(v), nil
 }
