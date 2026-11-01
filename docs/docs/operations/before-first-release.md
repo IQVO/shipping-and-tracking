@@ -1,3 +1,10 @@
+---
+id: before-first-release
+title: Before the first release
+sidebar_label: Before the first release
+description: "Packaging checklist for shipping-and-tracking: real runtime, Dockerfile, Helm chart, chart tests, secrets and the repository settings the first merge to main depends on."
+---
+
 # Before the first release: shipping-and-tracking
 
 The first merge to `main` runs `docker-publish` and `release`. Two services built from

@@ -1,0 +1,47 @@
+---
+id: shipping-tracking-api
+title: "Shipping & Tracking API"
+description: "REST contract of the shipping-and-tracking bounded context of the retail network, derived from retail-network-docs model/model.yaml (contexts[shipping-and-tracking].rest, .aggregates, .publishes, conventions.errors) and the orchestrator's contracts-delta (G2, G3, G11, G18). It issues shipping labels and owns each package's journey. No schema of this contract carries a ship-to address or any part of it: the address is read from customer-ordering at issue time (GetShipTo), kept only as an encrypted snapshot (purged 30 days after the journey closes) and never returned (ADR RN-0006, ADR 0002 A9). vendor-connectivity calls POST /labels in-organization; the other routes are read by shoppers, customer-ordering and operations tooling. No authentication, consistent with the fleet. Errors are RFC 9457 problem details. The shared problem types are not-found (404), illegal-transition (409), concurrent-update (409) and validation-failed (422), plus one slug per model Err name."
+sidebar_label: Introduction
+sidebar_position: 0
+hide_title: true
+custom_edit_url: null
+---
+
+import ApiLogo from "@theme/ApiLogo";
+import Heading from "@theme/Heading";
+import SchemaTabs from "@theme/SchemaTabs";
+import TabItem from "@theme/TabItem";
+import Export from "@theme/ApiExplorer/Export";
+
+<span
+  className={"theme-doc-version-badge badge badge--secondary"}
+  children={"Version: 0.1.0"}
+>
+</span>
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Shipping & Tracking API"}
+>
+</Heading>
+
+
+
+REST contract of the shipping-and-tracking bounded context of the retail network, derived from retail-network-docs model/model.yaml (contexts[shipping-and-tracking].rest, .aggregates, .publishes, conventions.errors) and the orchestrator's contracts-delta (G2, G3, G11, G18). It issues shipping labels and owns each package's journey. No schema of this contract carries a ship-to address or any part of it: the address is read from customer-ordering at issue time (GetShipTo), kept only as an encrypted snapshot (purged 30 days after the journey closes) and never returned (ADR RN-0006, ADR 0002 A9). vendor-connectivity calls POST /labels in-organization; the other routes are read by shoppers, customer-ordering and operations tooling. No authentication, consistent with the fleet. Errors are RFC 9457 problem details. The shared problem types are not-found (404), illegal-transition (409), concurrent-update (409) and validation-failed (422), plus one slug per model Err name.
+
+<div
+  style={{"display":"flex","flexDirection":"column","marginBottom":"var(--ifm-paragraph-margin-bottom)"}}
+>
+  <h3
+    style={{"marginBottom":"0.25rem"}}
+  >
+    Contact
+  </h3><span>
+    shipping-and-tracking maintainers: 
+  </span><span>
+    URL: [https://github.com/IQVO/shipping-and-tracking](https://github.com/IQVO/shipping-and-tracking)
+  </span>
+</div>
+      
