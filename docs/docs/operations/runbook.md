@@ -1,3 +1,10 @@
+---
+id: runbook
+title: Runbook
+sidebar_label: Runbook
+description: "Deploying, probing and operating Shipping & Tracking: Helm chart, readiness, migrations, Kafka topics and consumer groups, outbox relay, DLQ, sweepers and routine procedures."
+---
+
 # Shipping & Tracking runbook
 
 Issues the shipping label of each package (the only place outside customer-ordering that ever sees a ship-to address — stored only as an AES-256-GCM snapshot) and owns every package's journey: one customer-visible timeline consolidated from vendor, linehaul and last-mile facts, ending in delivered, returned or lost. Domain-driven design study: no real company, brand or dataset — all names and figures are synthetic (see the disclaimer in `README.md`). Contracts: `apis/openapi.yaml`, `apis/asyncapi.yaml`; decisions: `docs/adr/`.
@@ -25,6 +32,31 @@ Two optional read-only deployables run beside it, both off by default: `cmd/mcp`
 
 Any consumer, job loop or the relay returning on its own makes the process exit non-zero so the orchestrator restarts it (`cmd/api/main.go` `watchWorkers`; a worker death logs `consumer stopped` / `outbox relay stopped`). Shutdown order: `/readyz` flips 503 → wait `SHUTDOWN_DRAIN_DELAY` (5s) → HTTP drain (≤10s) → consumers+jobs (≤10s) → the relay LAST so nothing committed is stranded (≤10s); the chart refuses a `terminationGracePeriodSeconds` not greater than 30s + the delay (45s default).
 
+## Deployment
+
+- **Image**: one image (`Dockerfile`) carries every `cmd/*` binary in `/app/` (`api`, `mcp`, `a2a`); `ENTRYPOINT ["./api"]`, exposes 8080, 8090 and 8093, runs as uid 1000, writes nothing to disk. Published to `ghcr.io/iqvo/shipping-and-tracking` by the `docker-publish` job on push to `main` (`.github/workflows/ci.yml`).
+- **Chart**: `charts/shipping-and-tracking/`, packaged as `shipping-and-tracking-<version>.tgz` by the `release` job and pushed to `oci://ghcr.io/iqvo`. The default component is the `api` Deployment (Service port 80 to 8080). Optional components, all off by default: `mcp.enabled` (command `/app/mcp`, port 8090), `a2a.enabled` (command `/app/a2a`, port 8093) and `frontend.enabled` (the nginx pod serving the `web/` console remote, reached through the web gateway, never routed by this chart). Kong routes for MCP and A2A are `mcp.route.enabled` (`/api/mcp/shipping-and-tracking`) and `a2a.route.enabled` (`/api/a2a/shipping-and-tracking`).
+- **Required values**: the chart refuses to render without `database.url` or `database.existingSecret`, without `kafka.brokers`, `config.customerOrderingUrl` and the four `config.*ConsumerGroup` values, without the crypto Secret (`crypto.existingSecret` or both inline values), and with a `terminationGracePeriodSeconds` not greater than 30 s plus `config.shutdownDrainDelay` (`values.yaml`, `tests/render_test.sh`).
+- **Probes** (api): `startupProbe` and `livenessProbe` on `/healthz`, `readinessProbe` on `/readyz`. `cmd/mcp` and `cmd/a2a` probe `/healthz` for all three (they have no readiness dependency check).
+- **Scaling**: `replicaCount: 1` by default; `autoscaling.api.enabled` adds an HPA (1 to 4 replicas at 70% CPU). More than one api replica is safe by design (the relay claims rows with `SKIP LOCKED`, consumer groups are stable, the inbox dedupes inside the handler transaction) but has not been load-tested.
+- **Migrations**: embedded in the binary (`internal/adapters/outbound/postgres/migrations/0001_schema.up.sql` and `.down.sql`) and applied by `cmd/api`, `cmd/mcp` and `cmd/a2a` at every boot with golang-migrate; its advisory lock makes concurrent starts safe. There is no separate migration job. Use `MIGRATIONS_DATABASE_URL` (direct DSN) when `DATABASE_URL` goes through PgBouncer.
+
+### What readiness waits for
+
+`/readyz` (api only) is 200 when the cached verdict (3 s TTL, 2 s bound per round) says both Postgres (`pool.Ping`) and Kafka (a metadata request against `KAFKA_BROKERS`) answer. It does not wait for the consumers to have joined their groups or for the relay to be caught up. During shutdown it returns 503 `{"status":"not_ready"}` for `SHUTDOWN_DRAIN_DELAY` before the listener drains.
+
+### Kafka topics and consumer groups
+
+| Direction | Topic | Group (env var) | Dead-letter topic |
+| --- | --- | --- | --- |
+| produce | `retailnetwork.shipping-and-tracking.events` | none | none |
+| consume | `retailnetwork.vendor-connectivity.events` | `VENDOR_CONSUMER_GROUP` | `retailnetwork.vendor-connectivity.events.dlq` |
+| consume | `retailnetwork.linehaul-transportation.events` | `LINEHAUL_CONSUMER_GROUP` | `retailnetwork.linehaul-transportation.events.dlq` |
+| consume | `retailnetwork.last-mile-delivery.events` | `LASTMILE_CONSUMER_GROUP` | `retailnetwork.last-mile-delivery.events.dlq` |
+| consume | `retailnetwork.offer-availability.events` | `CATALOG_CONSUMER_GROUP` | `retailnetwork.offer-availability.events.dlq` |
+
+Source: `internal/adapters/inbound/kafka/handlers.go` (topics), `deadletter.go` (`DLQSuffix = ".dlq"`), `internal/adapters/outbound/kafka/encoder.go` (produced topic). Group ids are chart values and must stay stable across restarts so a rescheduled pod resumes from its committed offsets.
+
 ## Dependencies
 
 - **Postgres via PgBouncer** — `DATABASE_URL` (pooled) for the runtime pool; `MIGRATIONS_DATABASE_URL` (direct DSN, optional `secretKeyRef`, falls back to `DATABASE_URL`) used only by the boot migrations (`cmd/api/main.go` `openPool`). Schema: `internal/adapters/outbound/postgres/migrations/0001_schema.up.sql`.
@@ -36,7 +68,7 @@ Any consumer, job loop or the relay returning on its own makes the process exit 
 
 - `GET /healthz` — liveness only; never flipped by shutdown or by a dependency (`internal/adapters/inbound/http/readiness.go`). Used by the startup and liveness probes.
 - `GET /readyz` — 200 only while a Postgres ping AND a Kafka broker metadata request succeed; the verdict is cached 3s and one round of checks is bounded 2s. 503 `{"status":"not_ready"}` while draining; 503 problem+json `dependency-unavailable` naming the failed dependency (`postgres` or `kafka`). Used by the readiness probe.
-- Writes are NOT gated on readiness: a `POST /labels` commits label + encrypted snapshot + outbox row in ONE transaction; only the relay ever touches Kafka. So with **Kafka down, REST writes still return 200 and queue in `outbox_events`** (verified by `cmd/api/e2e_integration_test.go`: Kafka removed → `/readyz` goes 503, `/healthz` stays 200). With **Postgres down, REST writes fail** (500 `internal-error`).
+- Writes are NOT gated on readiness: a `POST /labels` commits label + encrypted snapshot + outbox row in ONE transaction; only the relay ever touches Kafka. So with **Kafka down, REST writes are still accepted (201 for `POST /labels`, 200 for the others) and queue in `outbox_events`** (verified by `cmd/api/e2e_integration_test.go`: Kafka removed → `/readyz` goes 503, `/healthz` stays 200). With **Postgres down, REST writes fail** (500 `internal-error`).
 
 ## Configuration
 
@@ -88,7 +120,7 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 
 - **Symptom**: `/readyz` 503 naming `kafka`; `/healthz` stays 200; `outbox_events` backlog grows.
 - **Diagnosis**: confirmed Kafka outage (broker list in `KAFKA_BROKERS`).
-- **Action**: none — REST writes are still accepted (200) and queued in `outbox_events`; on recovery the relay drains the backlog in `id` order. No committed event is lost while Postgres is up (`cmd/api/e2e_integration_test.go`).
+- **Action**: none — REST writes are still accepted and queued in `outbox_events`; on recovery the relay drains the backlog in `id` order. No committed event is lost while Postgres is up (`cmd/api/e2e_integration_test.go`).
 
 ### Outbox relay row parked after max attempts
 
