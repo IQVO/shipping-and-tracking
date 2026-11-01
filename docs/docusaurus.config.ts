@@ -6,7 +6,7 @@ import type * as OpenApiPlugin from 'docusaurus-plugin-openapi-docs';
 const config: Config = {
   title: 'Shipping & Tracking',
   tagline:
-    'Shipping & Tracking: a Generic bounded context of the retail-network domain (warehouse-systems).',
+    'Package labels and tracking: one tracking number and one forward-only journey for every parcel in the retail network',
   favicon: 'img/favicon.svg',
 
   future: {

@@ -35,7 +35,13 @@ function HomepageHeader() {
           {siteConfig.title}
         </Heading>
         <p className={styles.heroSubtitle}>{siteConfig.tagline}</p>
-        <p className={styles.heroLead}>TODO-LEAD</p>
+        <p className={styles.heroLead}>
+          Issues the shipping label of every package, keeping the ship-to address only as an
+          encrypted snapshot, and folds what the vendor, linehaul and last-mile contexts report into
+          one customer-visible timeline that ends delivered, returned, lost or voided. Silent
+          packages raise a NO_SCAN exception; eight CloudEvents leave through a transactional
+          outbox, and the timeline is readable over REST, MCP and A2A.
+        </p>
         <div className={styles.buttons}>
           <Link className="button button--primary button--lg" to="/docs/overview/introduction">
             Read the docs
