@@ -6,7 +6,7 @@ Retail network, bounded context **Shipping & Tracking** (Generic, logistics tier
 
 Issues shipping labels (the only place outside customer-ordering that ever sees a ship-to address) and owns each package's journey: one customer-visible timeline consolidated from vendor handover, load and delivery facts, ending in delivered, returned or lost.
 
-It owns the `Label` and `Journey` aggregates. It does **not** own the vendor handover, the linehaul legs, the last-mile attempts or the catalogue items — those contexts' published events are consumed and folded into the journeys. It is a downstream conformist of those four Open Host Services, and it calls customer-ordering's `GetShipTo` over HTTP at label time. This repository is a service of the retail network, not of the warehouse-systems fleet; the fleet reaches the network only through the `vendor-connectivity` Vendor API.
+It owns the `ShippingLabel` and `PackageJourney` aggregates. It does **not** own the vendor handover, the linehaul legs, the last-mile attempts or the catalogue items — those contexts' published events are consumed and folded into the journeys. It is a downstream conformist of those four Open Host Services, and it calls customer-ordering's `GetShipTo` over HTTP at label time. This repository is a service of the retail network, not of the warehouse-systems fleet; the fleet reaches the network only through the `vendor-connectivity` Vendor API.
 
 The design is proposed in [retail-network docs](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking); `model/model.yaml` there is the single source of truth. The decisions this repository took where the model is silent are in [`docs/adr`](docs/adr/index.md) (ADR 0002 lists 30 numbered assumptions).
 
@@ -18,16 +18,21 @@ This project is a domain-driven design study. It is not associated with, endorse
 
 ## Documentation
 
-This repository has no docs site of its own. Its design documentation lives on the warehouse-docs retail-network pages:
+The documentation site is published at **<https://iqvo.github.io/shipping-and-tracking/>**. Its
+sources are in [`docs/`](docs/) (Docusaurus; `cd docs && npm ci && npm run build`). The network-wide
+view of this context is on the aggregator,
+[warehouse-docs](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking).
 
 | Area | Pages |
 |---|---|
-| Retail network | [Network overview](https://iqvo.github.io/warehouse-docs/network) |
-| This context | [Index / service facts](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking), [Business context](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/business-context), [Domain events](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/domain-events), [Use cases](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/use-cases) |
-| DDD artifact pack | [Ubiquitous language](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/ubiquitous-language), [Context map](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/context-map), [Core domain chart](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/core-domain-chart), [Bounded context canvas](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/bounded-context-canvas), [Aggregate design canvas](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/aggregate-design-canvas), [EventStorming](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/eventstorming), [Class diagram](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/class-diagram), [Sequence diagrams](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/sequence-diagrams), [ER diagram](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/entity-relationship), [Domain message flow](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking/domain-message-flow) |
-| Decisions | [Network ADRs](https://iqvo.github.io/warehouse-docs/network/adr) |
-
-In-tree: [docs/adr/](docs/adr/index.md) (decisions, index), `docs/before-first-release.md` (packaging checklist; the rows that need repository secrets remain for the repo admin).
+| Overview | [Introduction](https://iqvo.github.io/shipping-and-tracking/docs/overview/introduction), [Architecture](https://iqvo.github.io/shipping-and-tracking/docs/overview/architecture), [Quickstart](https://iqvo.github.io/shipping-and-tracking/docs/overview/quickstart) |
+| Operations | [Configuration](https://iqvo.github.io/shipping-and-tracking/docs/operations/configuration), [Runbook](https://iqvo.github.io/shipping-and-tracking/docs/operations/runbook), [Observability](https://iqvo.github.io/shipping-and-tracking/docs/operations/observability), [Troubleshooting](https://iqvo.github.io/shipping-and-tracking/docs/operations/troubleshooting), [Before the first release](https://iqvo.github.io/shipping-and-tracking/docs/operations/before-first-release) |
+| Development | [Testing](https://iqvo.github.io/shipping-and-tracking/docs/development/testing) |
+| Domain-driven design | [Ubiquitous language](https://iqvo.github.io/shipping-and-tracking/docs/ddd/ubiquitous-language), [Use cases](https://iqvo.github.io/shipping-and-tracking/docs/ddd/use-cases), [Subdomain classification](https://iqvo.github.io/shipping-and-tracking/docs/ddd/subdomain-classification), [DDD artifacts index](https://iqvo.github.io/shipping-and-tracking/docs/ddd/ddd-artifacts) |
+| DDD artifact pack | [Core domain chart](https://iqvo.github.io/shipping-and-tracking/docs/ddd/core-domain-chart), [Bounded context canvas](https://iqvo.github.io/shipping-and-tracking/docs/ddd/bounded-context-canvas), [Context map](https://iqvo.github.io/shipping-and-tracking/docs/ddd/context-map), [Aggregate design canvas](https://iqvo.github.io/shipping-and-tracking/docs/ddd/aggregate-design-canvas), [Domain message flow](https://iqvo.github.io/shipping-and-tracking/docs/ddd/domain-message-flow), [EventStorming](https://iqvo.github.io/shipping-and-tracking/docs/ddd/eventstorming), [Class diagram](https://iqvo.github.io/shipping-and-tracking/docs/ddd/class-diagram), [Entity-relationship](https://iqvo.github.io/shipping-and-tracking/docs/ddd/entity-relationship), [Sequence diagrams](https://iqvo.github.io/shipping-and-tracking/docs/ddd/sequence-diagrams), [Domain events](https://iqvo.github.io/shipping-and-tracking/docs/ddd/domain-events) |
+| API reference | [Overview (REST, events, MCP, A2A)](https://iqvo.github.io/shipping-and-tracking/docs/api-reference), [REST reference](https://iqvo.github.io/shipping-and-tracking/docs/api-reference/rest/shipping-tracking-api), [Event catalogue](https://iqvo.github.io/shipping-and-tracking/docs/api-reference/events) |
+| Ecosystem | [Integration](https://iqvo.github.io/shipping-and-tracking/docs/ecosystem/integration), [MCP tools](https://iqvo.github.io/shipping-and-tracking/docs/mcp/tools) |
+| Decisions | [ADR index](https://iqvo.github.io/shipping-and-tracking/docs/adr) (the ADR files are in [`docs/adr/`](docs/adr/index.md)) |
 
 ## Architecture
 
