@@ -55,7 +55,7 @@ flowchart LR
 
 Source: `apis/openapi.yaml` and the consumer lists in `apis/asyncapi.yaml`. Legend: arrows point from upstream to downstream; CF = Conformist, C/S = Customer/Supplier, OHS = Open Host Service; path parameters are left out of the diagram. The dotted line without an arrow head is a relationship that is deliberately absent.
 
-Omitted: the callers of `POST /journeys/{trackingNumber}/scans` and `POST /labels/{labelRef}:void`, which neither the code nor the contracts name; Postgres and Kafka as infrastructure. There is no edge to node-topology: this context consumes no node event.
+Omitted: the callers of `POST /journeys/{trackingNumber}/scans` and `POST /labels/{labelRef}/voids`, which neither the code nor the contracts name; Postgres and Kafka as infrastructure. There is no edge to node-topology: this context consumes no node event.
 
 ## Edges
 

@@ -41,7 +41,7 @@ Domain-driven design study: no real company, brand or dataset; names and figures
 | Capability | Interface | Page |
 | --- | --- | --- |
 | Issue a label and start the journey | REST `POST /labels` | [Use cases](/docs/ddd/use-cases) |
-| Void a label before handover | REST `POST /labels/{labelRef}:void` | [Use cases](/docs/ddd/use-cases) |
+| Void a label before handover | REST `POST /labels/{labelRef}/voids` | [Use cases](/docs/ddd/use-cases) |
 | Read a package's timeline | REST `GET /journeys/{trackingNumber}`, MCP and A2A `get_journey`, the console remote | [API overview](/docs/api-reference), [MCP tools](/docs/mcp/tools) |
 | Record a scan | Kafka consumers of four topics, and REST `POST /journeys/{trackingNumber}/scans` | [Event catalogue](/docs/api-reference/events) |
 | Raise `NO_SCAN` exceptions and declare lost packages | periodic `silence-sweep` job | [Runbook](/docs/operations/runbook) |

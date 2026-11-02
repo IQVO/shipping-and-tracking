@@ -15,7 +15,7 @@ import (
 // It carries the SAME read use case the REST adapter uses (GET
 // /journeys/{trackingNumber}); the adapter never constructs an outbound
 // adapter itself, and it holds no write use case at all (docs/adr/0006).
-// POST /labels, POST /labels/{labelRef}:void and POST
+// POST /labels, POST /labels/{labelRef}/voids and POST
 // /journeys/{trackingNumber}/scans stay REST-only.
 type Deps struct {
 	GetJourney *usecases.GetJourney

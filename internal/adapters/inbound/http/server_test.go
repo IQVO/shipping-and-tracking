@@ -106,11 +106,11 @@ func TestIssueLabelThenReadTheJourney(t *testing.T) {
 func TestVoidLabelRouteWithTheColonSuffix(t *testing.T) {
 	f := newFixture(t)
 	ref := f.do(t, "POST", "/labels", issueBody).field(t, "labelRef")
-	got := f.do(t, "POST", "/labels/"+ref+":void", `{"reason":"order cancelled"}`)
+	got := f.do(t, "POST", "/labels/"+ref+"/voids", `{"reason":"order cancelled"}`)
 	if got.status != 200 || got.field(t, "status") != "VOIDED" {
 		t.Fatalf("void = %+v", got)
 	}
-	again := f.do(t, "POST", "/labels/"+ref+":void", `{"reason":"again"}`)
+	again := f.do(t, "POST", "/labels/"+ref+"/voids", `{"reason":"again"}`)
 	if again.status != 200 || again.field(t, "status") != "VOIDED" {
 		t.Fatalf("second void = %+v", again)
 	}
@@ -140,7 +140,7 @@ func TestRecordScanFlowAndItsRefusals(t *testing.T) {
 	}
 	// A void after the handover is refused.
 	ref := "lbl-1"
-	if got := f.do(t, "POST", "/labels/"+ref+":void", `{"reason":"late"}`); got.status != 409 || got.field(t, "type") != "void-after-handover" {
+	if got := f.do(t, "POST", "/labels/"+ref+"/voids", `{"reason":"late"}`); got.status != 409 || got.field(t, "type") != "void-after-handover" {
 		t.Errorf("void = %+v", got)
 	}
 }
@@ -169,8 +169,8 @@ func TestProblemDetailsOfTheErrorCatalogue(t *testing.T) {
 		{"not json", f.do(t, "POST", "/labels", `nope`), 422, "validation-failed"},
 		{"empty body", f.do(t, "POST", "/labels", ``), 422, "validation-failed"},
 		{"trailing data", f.do(t, "POST", "/labels", issueBody+`{}`), 422, "validation-failed"},
-		{"void unknown", f.do(t, "POST", "/labels/nope:void", `{"reason":"x"}`), 404, "not-found"},
-		{"void no reason", f.do(t, "POST", "/labels/lbl-1:void", `{}`), 422, "validation-failed"},
+		{"void unknown", f.do(t, "POST", "/labels/nope/voids", `{"reason":"x"}`), 404, "not-found"},
+		{"void no reason", f.do(t, "POST", "/labels/lbl-1/voids", `{}`), 422, "validation-failed"},
 		{"journey unknown", f.do(t, "GET", "/journeys/nope", ""), 404, "not-found"},
 		{"scan unknown journey", f.do(t, "POST", "/journeys/nope/scans", scanBody("s", "DEPARTURE", 1)), 404, "not-found"},
 		{"scan bad type", f.do(t, "POST", "/journeys/x/scans", scanBody("s", "TELEPORT", 1)), 422, "validation-failed"},
@@ -216,6 +216,21 @@ func TestHealthzAndReadyz(t *testing.T) {
 	for _, p := range []string{"/healthz", "/readyz"} {
 		if got := f.do(t, "GET", p, ""); got.status != 200 {
 			t.Errorf("%s = %+v", p, got)
+		}
+	}
+}
+
+// TestRetiredRoutesAreGone: the REST guideline cutover (ADR 0010) has no alias;
+// the old colon-suffix void route matches nothing.
+func TestRetiredRoutesAreGone(t *testing.T) {
+	f := newFixture(t)
+	for _, tc := range []struct{ method, path string }{
+		{"POST", "/labels/lbl-1:void"},
+		{"GET", "/labels/lbl-1:void"},
+	} {
+		got := f.do(t, tc.method, tc.path, `{"reason":"x"}`)
+		if got.status != 404 && got.status != 405 {
+			t.Errorf("%s %s = %d, want 404 or 405", tc.method, tc.path, got.status)
 		}
 	}
 }

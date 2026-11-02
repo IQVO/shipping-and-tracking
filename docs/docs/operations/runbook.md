@@ -18,7 +18,7 @@ One `api` Deployment, one process (`cmd/api/main.go`, the composition root — t
   | Route | Use case |
   | --- | --- |
   | `POST /labels` | issue a label (calls customer-ordering, seals the snapshot, starts the journey) |
-  | `POST /labels/{labelRef}:void` | void before handover |
+  | `POST /labels/{labelRef}/voids` | void before handover |
   | `GET /journeys/{trackingNumber}` | the timeline |
   | `POST /journeys/{trackingNumber}/scans` | record a scan |
 

@@ -53,12 +53,15 @@ paths:
           $ref: '#/components/responses/IdempotencyKeyRequired'
         '201':
           description: Label issued (or replayed for a known Idempotency-Key).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Label'
         '409':
-          description: label-already-issued (ErrLabelAlreadyIssued), tracking-number-taken (ErrTrackingNumberTaken) or concurrent-update (ErrConcurrentUpdate).
+          description: label-already-issued (ErrLabelAlreadyIssued), tracking-number-taken (ErrTrackingNumberTaken), concurrent-update (ErrConcurrentUpdate) or idempotency-key-reused (the Idempotency-Key was already used with a different request).
           content:
             application/problem+json:
               schema:
@@ -75,7 +78,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
-  /labels/{labelRef}:void:
+  /labels/{labelRef}/voids:
     post:
       tags: [Labels]
       operationId: voidLabel
@@ -100,6 +103,9 @@ paths:
           $ref: '#/components/responses/IdempotencyKeyRequired'
         '200':
           description: Label voided (or already voided).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/json:
               schema:
@@ -107,7 +113,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: void-after-handover (ErrVoidAfterHandover) or concurrent-update (ErrConcurrentUpdate).
+          description: void-after-handover (ErrVoidAfterHandover), concurrent-update (ErrConcurrentUpdate) or idempotency-key-reused (the Idempotency-Key was already used with a different request).
           content:
             application/problem+json:
               schema:
@@ -160,6 +166,9 @@ paths:
           $ref: '#/components/responses/IdempotencyKeyRequired'
         '200':
           description: Scan applied; the journey after the scan.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/json:
               schema:
@@ -167,7 +176,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: duplicate-scan (ErrDuplicateScan), scan-out-of-order (ErrScanOutOfOrder, stored not applied), journey-closed (ErrJourneyClosed), illegal-transition (stored not applied) or concurrent-update.
+          description: duplicate-scan (ErrDuplicateScan), scan-out-of-order (ErrScanOutOfOrder, stored not applied), journey-closed (ErrJourneyClosed), illegal-transition (stored not applied), concurrent-update or idempotency-key-reused (the Idempotency-Key was already used with a different request).
           content:
             application/problem+json:
               schema:
@@ -180,9 +189,10 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      description: Client-chosen key (at most 128 characters); a repeat with the same key replays the first response (24 hours).
+      description: Client-generated key, 1-128 printable ASCII characters, one per logical submit (a retry reuses it). The same key and the same request replays the first response (24 hours) with Idempotency-Replayed true; the same key with a different method, path or body answers 409 idempotency-key-reused.
       schema:
         type: string
+        minLength: 1
         maxLength: 128
     LabelRef:
       name: labelRef
@@ -196,9 +206,15 @@ components:
       required: true
       schema:
         type: string
+  headers:
+    IdempotencyReplayed:
+      description: Present, with the value true, only when the response is a replay of the answer stored for the Idempotency-Key.
+      schema:
+        type: string
+        enum: ['true']
   responses:
     IdempotencyKeyRequired:
-      description: idempotency-key-required. The Idempotency-Key header is missing.
+      description: idempotency-key-required (the Idempotency-Key header is missing) or idempotency-key-invalid (not 1-128 printable ASCII characters).
       content:
         application/problem+json:
           schema:
