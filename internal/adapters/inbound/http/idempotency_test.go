@@ -68,8 +68,8 @@ func TestRequireIdempotencyKeyRefusesATooLongKey(t *testing.T) {
 	r := idemRequest(`{"poNumber":"PO-1"}`)
 	r.Header.Set(IdempotencyKeyHeader, strings.Repeat("k", MaxIdempotencyKeyLen+1))
 	h.ServeHTTP(rec, r)
-	if slug, status := problemOf(t, rec); status != http.StatusUnprocessableEntity || slug != "validation-failed" {
-		t.Errorf("got %d %q, want 422 validation-failed", status, slug)
+	if slug, status := problemOf(t, rec); status != http.StatusBadRequest || slug != "idempotency-key-invalid" {
+		t.Errorf("got %d %q, want 400 idempotency-key-invalid", status, slug)
 	}
 }
 

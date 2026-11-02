@@ -47,6 +47,13 @@ func pgServer(t *testing.T) (*httptest.Server, *pgtest.Pool, *memory.ShipToGatew
 
 func post(t *testing.T, srv *httptest.Server, path, key, body string) (int, string) {
 	t.Helper()
+	code, _, b := postH(t, srv, path, key, body)
+	return code, b
+}
+
+// postH is post that also returns the response headers.
+func postH(t *testing.T, srv *httptest.Server, path, key, body string) (int, http.Header, string) {
+	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +68,7 @@ func post(t *testing.T, srv *httptest.Server, path, key, body string) (int, stri
 	}
 	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, string(b)
+	return resp.StatusCode, resp.Header, string(b)
 }
 
 func count(t *testing.T, pool *pgtest.Pool, table string) int {
@@ -75,10 +82,13 @@ func count(t *testing.T, pool *pgtest.Pool, table string) int {
 
 func TestIdempotencyReplaysTheFirstResponseAndRejectsADifferentBody(t *testing.T) {
 	srv, pool, _ := pgServer(t)
-	code1, body1 := post(t, srv, "/labels", "key-1", issueBody)
-	code2, body2 := post(t, srv, "/labels", "key-1", issueBody)
+	code1, h1, body1 := postH(t, srv, "/labels", "key-1", issueBody)
+	code2, h2, body2 := postH(t, srv, "/labels", "key-1", issueBody)
 	if code1 != 201 || code2 != 201 || body1 != body2 {
 		t.Fatalf("replay = %d %s / %d %s", code1, body1, code2, body2)
+	}
+	if h1.Get("Idempotency-Replayed") != "" || h2.Get("Idempotency-Replayed") != "true" {
+		t.Fatalf("Idempotency-Replayed first=%q replay=%q, want empty then true", h1.Get("Idempotency-Replayed"), h2.Get("Idempotency-Replayed"))
 	}
 	if n := count(t, pool, "shipping_labels"); n != 1 {
 		t.Fatalf("%d labels after a replay, want 1", n)
@@ -87,24 +97,27 @@ func TestIdempotencyReplaysTheFirstResponseAndRejectsADifferentBody(t *testing.T
 		t.Fatalf("%d outbox rows after a replay, want 1", n)
 	}
 	code3, body3 := post(t, srv, "/labels", "key-1", strings.Replace(issueBody, "PO-1", "PO-2", 1))
-	if code3 != 422 || !strings.Contains(body3, "different request body") {
+	if code3 != 409 || !strings.Contains(body3, "idempotency-key-reused") {
 		t.Fatalf("reuse = %d %s", code3, body3)
 	}
 }
 
-func TestIdempotencyKeyIsRequiredBoundedAndScopedPerRoute(t *testing.T) {
+func TestIdempotencyKeyIsRequiredBoundedAndGlobal(t *testing.T) {
 	srv, _, _ := pgServer(t)
 	if code, body := post(t, srv, "/labels", "", issueBody); code != 400 || !strings.Contains(body, "idempotency-key-required") {
 		t.Fatalf("missing key = %d %s", code, body)
 	}
-	if code, body := post(t, srv, "/labels", strings.Repeat("k", 129), issueBody); code != 422 || !strings.Contains(body, "128") {
+	if code, body := post(t, srv, "/labels", strings.Repeat("k", 129), issueBody); code != 400 || !strings.Contains(body, "idempotency-key-invalid") {
 		t.Fatalf("long key = %d %s", code, body)
 	}
 	if code, body := post(t, srv, "/labels", strings.Repeat("k", 128), issueBody); code != 201 {
 		t.Fatalf("128-char key = %d %s", code, body)
 	}
-	// The same key on another route is a different request.
-	if code, body := post(t, srv, "/labels/nope:void", strings.Repeat("k", 128), `{"reason":"x"}`); code != 404 {
+	if code, body := post(t, srv, "/labels", "caf\u00e9", issueBody); code != 400 || !strings.Contains(body, "idempotency-key-invalid") {
+		t.Fatalf("non-ASCII key = %d %s", code, body)
+	}
+	// The key is global: the same key on another route is a reuse, not a new key.
+	if code, body := post(t, srv, "/labels/nope/voids", strings.Repeat("k", 128), `{"reason":"x"}`); code != 409 || !strings.Contains(body, "idempotency-key-reused") {
 		t.Fatalf("same key, other route = %d %s", code, body)
 	}
 }

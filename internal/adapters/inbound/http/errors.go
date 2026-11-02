@@ -24,9 +24,9 @@ type problem struct {
 }
 
 // validationFailed is the one problem of a rejected request: a malformed body,
-// an Idempotency-Key that is too long and a key reused with another body are
-// 422 validation-failed (apis/openapi.yaml, ADR 0002 A24); the detail says
-// which. A MISSING key is the one 400 (the fleet rule, idempotency-key-required).
+// a malformed body is 422 validation-failed (apis/openapi.yaml). The
+// Idempotency-Key problems are not 422: missing/malformed keys are 400 and a
+// reused key is 409 (ADR 0010, the fleet REST guideline).
 var validationFailed = problem{http.StatusUnprocessableEntity, "validation-failed", "Validation failed"}
 
 var internalProblem = problem{http.StatusInternalServerError, "internal-error", "Internal server error"}
@@ -34,8 +34,8 @@ var internalProblem = problem{http.StatusInternalServerError, "internal-error", 
 // Problems the idempotency middleware writes itself, before any use case runs.
 var (
 	idempotencyKeyRequired = problem{http.StatusBadRequest, "idempotency-key-required", "Idempotency-Key header is required"}
-	idempotencyKeyInvalid  = validationFailed
-	idempotencyKeyReused   = validationFailed
+	idempotencyKeyInvalid  = problem{http.StatusBadRequest, "idempotency-key-invalid", "Idempotency-Key header is invalid"}
+	idempotencyKeyReused   = problem{http.StatusConflict, "idempotency-key-reused", "Idempotency-Key was already used with a different request"}
 )
 
 // problemCatalogue maps every typed error to its problem, in match order.
