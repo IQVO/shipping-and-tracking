@@ -78,6 +78,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /labels/{labelRef}/voids:
     post:
       tags: [Labels]
@@ -120,6 +122,8 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /journeys/{trackingNumber}:
     get:
       tags: [Journeys]
@@ -140,6 +144,8 @@ paths:
                 $ref: '#/components/schemas/Journey'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /journeys/{trackingNumber}/scans:
     post:
       tags: [Journeys]
@@ -183,6 +189,8 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '422':
           $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
     IdempotencyKey:
@@ -221,6 +229,12 @@ components:
             $ref: '#/components/schemas/Problem'
     ValidationFailed:
       description: validation-failed. The request is well-formed JSON but violates a value rule.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: internal-error. An unmapped failure; the detail never carries the cause. Never cached by the idempotency middleware, so the same key retries the work.
       content:
         application/problem+json:
           schema:
@@ -380,7 +394,7 @@ components:
     Problem:
       type: object
       description: RFC 9457 problem details.
-      required: [type, title, status]
+      required: [type, title, status, detail, instance]
       properties:
         type:
           type: string
@@ -393,3 +407,4 @@ components:
           type: string
         instance:
           type: string
+          description: The escaped request path.
