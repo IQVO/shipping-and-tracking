@@ -66,7 +66,7 @@ func (u *SweepSilence) decide(ctx context.Context, tn shared.TrackingNumber, now
 			return "", err
 		}
 		var events []shared.Event
-		kind := ""
+		var kind string
 		switch {
 		case j.Lost(now):
 			events, err = j.DeclareLost(now, now)

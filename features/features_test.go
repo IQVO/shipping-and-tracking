@@ -223,7 +223,7 @@ func (w *world) oneLinehaulEventDepartsBoth(hours int, node string) error {
 func (w *world) sameLinehaulEventAgain() error {
 	res, err := usecases.NewApplyScans(w.deps).Execute(context.Background(), w.loadEvent)
 	if err != nil || !res.Skipped {
-		return fmt.Errorf("a redelivered event must be skipped, got %+v %v", res, err)
+		return fmt.Errorf("a redelivered event must be skipped, got %+v %w", res, err)
 	}
 	return nil
 }
@@ -254,14 +254,14 @@ func (w *world) shipToPurgeRuns() error {
 
 func (w *world) expectSuccess() error {
 	if w.lastErr != nil {
-		return fmt.Errorf("want success, got %s (%v)", slug(w.lastErr), w.lastErr)
+		return fmt.Errorf("want success, got %s (%w)", slug(w.lastErr), w.lastErr)
 	}
 	return nil
 }
 
 func (w *world) requestIsRefusedWith(want string) error {
 	if got := slug(w.lastErr); got != want {
-		return fmt.Errorf("want problem %q, got %q (%v)", want, got, w.lastErr)
+		return fmt.Errorf("want problem %q, got %q (%w)", want, got, w.lastErr)
 	}
 	return nil
 }

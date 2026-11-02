@@ -84,5 +84,5 @@ func unavailable(what string, cause error) error {
 	if cause == nil {
 		return fmt.Errorf("%w: %s failed", ports.ErrShipToUnavailable, what)
 	}
-	return fmt.Errorf("%w: %s failed: %v", ports.ErrShipToUnavailable, what, cause)
+	return fmt.Errorf("%w: %s failed: %w", ports.ErrShipToUnavailable, what, cause)
 }
