@@ -39,7 +39,7 @@ info:
     PackageReturnInitiated, offer-availability CatalogItemCreated. Each consumer
     group dedupes on the CloudEvents `id` (inbox table `processed_events`),
     dispatches on the full `type`, ignores unknown types and fields, and parks a
-    poison message on a dead-letter topic.
+    poison message on `<topic>.dlq`; a transient failure is retried five times first.
 
     **Envelope (mandatory).** CloudEvents 1.0, structured content mode, Kafka
     header `content-type: application/cloudevents+json; charset=UTF-8`.
@@ -510,7 +510,7 @@ components:
       name: LoadDeparted
       title: LoadDeparted (consumed from linehaul-transportation)
       summary: A load left a node.
-      description: "`type` = `com.retailnetwork.logistics.linehaul-transportation.load.LoadDeparted`. A load left a node. departureKind PICKUP at a vendor node is the handover (PICKUP_DEPARTURE); other kinds are DEPARTURE scans. departureKind and nodeType are contracts-delta E3 additions; their absence is tolerated (departureKind then defaults to LINEHAUL)."
+      description: "`type` = `com.retailnetwork.logistics.linehaul-transportation.load.LoadDeparted`. A load left a node. departureKind PICKUP at a vendor node is the handover (PICKUP_DEPARTURE); other kinds are DEPARTURE scans. departureKind is a contracts-delta E3 addition; its absence is tolerated (the scan is then a DEPARTURE, or the handover while the journey is LABELLED). A missing timestamp falls back to the CloudEvents `time`."
       contentType: application/cloudevents+json
       tags:
         - name: shipping-and-tracking
@@ -849,7 +849,7 @@ components:
           properties:
             data:
               type: object
-              required: ["poNumber", "nodeId", "trackingNumbers", "shippedAt"]
+              required: ["trackingNumbers"]
               properties:
                 poNumber: {"type": "string"}
                 assignmentId: {"type": "string"}
@@ -865,15 +865,14 @@ components:
           properties:
             data:
               type: object
-              required: ["loadId", "originNodeId", "trackingNumbers", "departedAt"]
+              required: ["trackingNumbers"]
               properties:
                 loadId: {"type": "string"}
                 departureId: {"type": "string"}
                 originNodeId: {"type": "string"}
                 trackingNumbers: {"type": "array", "items": {"type": "string"}}
                 departedAt: {"type": "string", "format": "date-time"}
-                departureKind: {"type": "string", "enum": ["PICKUP", "LINEHAUL", "AIR"]}
-                nodeType: {"type": "string", "description": "Type of the node where it happened."}
+                departureKind: {"type": "string", "description": "PICKUP gives a PICKUP_DEPARTURE scan; any other value gives DEPARTURE. Absent: DEPARTURE, upgraded to a handover while the journey is LABELLED."}
 
     LoadArrivedEvent:
       allOf:
@@ -882,15 +881,15 @@ components:
           properties:
             data:
               type: object
-              required: ["loadId", "destinationNodeId", "trackingNumbers", "arrivedAt"]
+              required: ["trackingNumbers"]
               properties:
                 loadId: {"type": "string"}
                 departureId: {"type": "string"}
                 destinationNodeId: {"type": "string"}
                 trackingNumbers: {"type": "array", "items": {"type": "string"}}
                 arrivedAt: {"type": "string", "format": "date-time"}
-                departureKind: {"type": "string", "enum": ["PICKUP", "LINEHAUL", "AIR"]}
-                nodeType: {"type": "string", "description": "Type of the node where it happened."}
+                nodeType: {"type": "string", "description": "DELIVERY_STATION gives a STATION_ARRIVAL scan, any other value TRANSIT_ARRIVAL."}
+                destinationNodeType: {"type": "string", "description": "Read only when nodeType is empty; same meaning."}
 
     PackageOutForDeliveryEvent:
       allOf:
@@ -899,7 +898,7 @@ components:
           properties:
             data:
               type: object
-              required: ["trackingNumber", "stationNodeId", "at"]
+              required: ["trackingNumber"]
               properties:
                 routeId: {"type": "string"}
                 trackingNumber: {"type": "string"}
@@ -913,11 +912,11 @@ components:
           properties:
             data:
               type: object
-              required: ["trackingNumber", "outcome", "at"]
+              required: ["trackingNumber"]
               properties:
                 routeId: {"type": "string"}
                 trackingNumber: {"type": "string"}
-                outcome: {"type": "string", "description": "DELIVERED or FAILED."}
+                outcome: {"type": "string", "description": "DELIVERED gives a DELIVERED scan; any other value gives DELIVERY_FAILED."}
                 failureReason: {"type": "string"}
                 at: {"type": "string", "format": "date-time"}
 
@@ -931,7 +930,7 @@ components:
               required: ["trackingNumber"]
               properties:
                 trackingNumber: {"type": "string"}
-                assignmentId: {"type": "string"}
+                at: {"type": "string", "format": "date-time", "description": "Falls back to the CloudEvents time."}
 
     CatalogItemCreatedEvent:
       allOf:
