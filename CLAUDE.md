@@ -40,6 +40,6 @@ ADRs, specs, tests, fixtures or the README.
 - A new consumed type is written into ADR 0003 (`TestConsumedTypesAreDocumented`).
 - Shared `repocontract` tests run against both the memory doubles and Postgres; add a case there, not in one adapter.
 - Chart: `charts/shipping-and-tracking/` (api only; tests in `charts/shipping-and-tracking/tests/`, run by the `chart-tests` and `helm-lint` CI jobs). A new env var in `cmd/api` must be rendered by the chart or `render_test.sh` fails.
-- Not built: traces and metrics, ship-to key rotation (ADR 0005, `docs/before-first-release.md`).
+- Not built: ship-to key rotation (ADR 0005, `docs/docs/operations/before-first-release.md`). Traces and metrics are built (ADR 0008).
 
 A2A: `cmd/a2a` (port 8093) is this context's read-only Agent2Agent agent, skills `get_journey` (read), decided in `docs/adr/0009-a2a-inbound-adapter.md`; delegation only (facts stay CloudEvents on Kafka), unauthenticated like REST and MCP; rules in `.claude/rules/fleet/a2a.md`.
