@@ -53,7 +53,7 @@ Source: `internal/domain/label/label.go` (`Issue`, `Void`). `VOIDED` has no outg
 | Command | Issued by | Inbound adapter |
 | --- | --- | --- |
 | `IssueLabel` | vendor-connectivity, inside a vendor's label request | REST `POST /labels` |
-| `VoidLabel` | No caller named | REST `POST /labels/{labelRef}:void` |
+| `VoidLabel` | No caller named | REST `POST /labels/{labelRef}/voids` |
 
 ### 7. Created events
 
@@ -152,7 +152,7 @@ Every applied scan raises `PackageScanned` with the new `state`.
 | `RaiseException` | the `silence-sweep` job | `internal/scheduler` |
 | `ReturnToSender` | the consumer of `PackageReturnInitiated` | `internal/adapters/inbound/kafka` |
 | `DeclareLost` | the `silence-sweep` job | `internal/scheduler` |
-| `Void` | the `VoidLabel` use case | REST `POST /labels/{labelRef}:void` |
+| `Void` | the `VoidLabel` use case | REST `POST /labels/{labelRef}/voids` |
 
 ### 7. Created events
 

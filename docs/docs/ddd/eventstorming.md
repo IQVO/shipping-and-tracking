@@ -62,7 +62,7 @@ Source: `internal/application/usecases/labels.go` (`IssueLabel.execute`, `create
 %%{init: {"flowchart": {"nodeSpacing": 14, "rankSpacing": 30}}}%%
 flowchart TB
     U["caller not named"]:::external
-    C3["VoidLabel<br/>POST /labels/labelRef:void"]:::command
+    C3["VoidLabel<br/>POST /labels/labelRef/voids"]:::command
     G1["ShippingLabel<br/>ISSUED to VOIDED"]:::aggregate
     G2["PackageJourney<br/>LABELLED to VOIDED"]:::aggregate
     E2["LabelVoided"]:::event

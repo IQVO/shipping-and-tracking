@@ -28,6 +28,10 @@ const tracerName = "github.com/claudioed/shipping-and-tracking/internal/adapters
 // question across both agent-facing surfaces.
 const skillGetJourney = "get_journey"
 
+// mediaTypeJSON is the sole content type this agent's skills speak; the card
+// and each skill must advertise the same value.
+const mediaTypeJSON = "application/json"
+
 // skillRequest is the wire contract of every skill call: the first meaningful
 // message part carries (as a Data part, or a Text part holding the same JSON)
 // the skill id and its arguments. Strict on purpose: an agent client is

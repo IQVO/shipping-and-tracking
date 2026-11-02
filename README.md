@@ -61,7 +61,7 @@ internal/
     outbound/memory/         test doubles only (cmd/** never imports them, fitness-tested)
   architecture/              the fitness tests below
 apis/                        openapi.yaml (REST) + asyncapi.yaml (events)
-docs/adr/                    9 ADRs + index
+docs/adr/                    10 ADRs + index
 features/                    8 godog feature files
 charts/shipping-and-tracking/ the Helm chart
 web/                         the shipping_mfe console remote
@@ -147,10 +147,10 @@ Logs, metrics and traces follow the fleet standard ([ADR 0008](docs/adr/0008-fle
 
 ## API
 
-REST contract: [`apis/openapi.yaml`](apis/openapi.yaml). Writes take `Idempotency-Key` (a replay returns the first answer); errors are RFC 9457 problem details, shared problem types `not-found` (404), `illegal-transition` (409), `concurrent-update` (409) and `validation-failed` (422), plus one slug per model `Err` name.
+REST contract: [`apis/openapi.yaml`](apis/openapi.yaml). Every POST takes `Idempotency-Key` (1-128 printable ASCII characters; a replay returns the first answer with `Idempotency-Replayed: true`, the same key with another method, path or body is `409 idempotency-key-reused`); errors are RFC 9457 problem details, shared problem types `not-found` (404), `illegal-transition` (409), `concurrent-update` (409) and `validation-failed` (422), plus one slug per model `Err` name.
 
 - `POST /labels` issues the label of one package, reads the synthetic ship-to from customer-ordering, stores it only as an AES-256-GCM snapshot (purged 30 days after the journey closes), starts the journey and publishes `LabelIssued` with an opaque `stopKey` and a 5-character postal prefix. No response, event or log carries the address.
-- `POST /labels/{labelRef}:void` voids a label before the package is handed over.
+- `POST /labels/{labelRef}/voids` voids a label before the package is handed over.
 - `GET /journeys/{trackingNumber}` returns the timeline.
 - `POST /journeys/{trackingNumber}/scans` records a scan.
 
@@ -203,7 +203,7 @@ CI (`.github/workflows/ci.yml`) runs `lint`, `guide-lint`, `complexity`, `test`,
 
 ## Architecture Decision Records
 
-[docs/adr/](docs/adr/index.md) — index plus 9 ADRs (0001–0009: bounded context, aggregates and invariants, consumed contracts and local read models, CloudEvents envelope and type catalogue, runtime configuration/jobs and retention, MCP server adoption, console remote, fleet observability standard, A2A inbound adapter).
+[docs/adr/](docs/adr/index.md) — index plus 10 ADRs (0001–0010: bounded context, aggregates and invariants, consumed contracts and local read models, CloudEvents envelope and type catalogue, runtime configuration/jobs and retention, MCP server adoption, console remote, fleet observability standard, A2A inbound adapter, fleet REST API guideline).
 
 ## License
 

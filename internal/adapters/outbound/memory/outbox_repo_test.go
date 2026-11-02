@@ -43,7 +43,7 @@ func TestOutboxRepoInsertMessagesUnpublished(t *testing.T) {
 }
 
 // Drain publishes oldest first, one at a time, and stops at the first send
-// error, reporting it as an *outbox.SendFailure with the 1-based row id and
+// error, reporting it as an *outbox.SendFailureError with the 1-based row id and
 // the row's attempt count after the failure.
 func TestOutboxRepoDrainPublishesOldestFirstAndStopsAtTheFirstError(t *testing.T) {
 	r := memory.NewOutboxRepo()
@@ -61,12 +61,12 @@ func TestOutboxRepoDrainPublishesOldestFirstAndStopsAtTheFirstError(t *testing.T
 	if published != 1 {
 		t.Errorf("published = %d, want 1 (only the row before the failure)", published)
 	}
-	var sf *outbox.SendFailure
+	var sf *outbox.SendFailureError
 	if !errors.As(err, &sf) {
-		t.Fatalf("Drain error = %v, want *outbox.SendFailure", err)
+		t.Fatalf("Drain error = %v, want *outbox.SendFailureError", err)
 	}
 	if sf.RowID != 2 || sf.Message.EventID != "b" || sf.Attempts != 1 || !errors.Is(sf.Err, cause) {
-		t.Errorf("SendFailure = %+v, want row 2 of event b after 1 attempt wrapping the cause", sf)
+		t.Errorf("SendFailureError = %+v, want row 2 of event b after 1 attempt wrapping the cause", sf)
 	}
 	if err.Error() != "outbox row 2 (Typeb): kafka unreachable" {
 		t.Errorf("Error() = %q, want the runbook wording", err.Error())

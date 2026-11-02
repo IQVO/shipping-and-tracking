@@ -22,7 +22,7 @@ import (
 // Route names of the idempotent POSTs (the idempotency_keys.route values).
 const (
 	RouteIssueLabel = "POST /labels"
-	RouteVoidLabel  = "POST /labels/{labelRef}:void"
+	RouteVoidLabel  = "POST /labels/{labelRef}/voids"
 	RouteRecordScan = "POST /journeys/{trackingNumber}/scans"
 )
 
@@ -74,7 +74,7 @@ func NewRouter(s *Server, logger *slog.Logger, serviceName string) http.Handler 
 	r.Get("/readyz", s.handleReadyz)
 
 	r.With(s.idempotent(RouteIssueLabel)).Post("/labels", s.handleIssueLabel)
-	r.With(s.idempotent(RouteVoidLabel)).Post("/labels/{labelRef}:void", s.handleVoidLabel)
+	r.With(s.idempotent(RouteVoidLabel)).Post("/labels/{labelRef}/voids", s.handleVoidLabel)
 	r.Get("/journeys/{trackingNumber}", s.handleGetJourney)
 	r.With(s.idempotent(RouteRecordScan)).Post("/journeys/{trackingNumber}/scans", s.handleRecordScan)
 	return r
@@ -91,8 +91,7 @@ func handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, statusBody{Status: "ok"})
 }
 
-// pathParam reads a chi path parameter. chi matches "{labelRef}:void" with the
-// parameter ending at the colon, so the value is the bare reference.
+// pathParam reads a chi path parameter.
 func pathParam(r *http.Request, name string) string {
 	return strings.TrimSpace(chi.URLParam(r, name))
 }

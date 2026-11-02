@@ -74,7 +74,7 @@ sequenceDiagram
     participant A as Label and Journey
     participant DB as DB transaction
     participant RL as Relay to Kafka
-    Note over H: POST /labels/labelRef:void with an Idempotency-Key
+    Note over H: POST /labels/labelRef/voids with an Idempotency-Key
     H->>UC: Execute labelRef, reason
     UC->>DB: load label
     alt not found
