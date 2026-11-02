@@ -13,6 +13,12 @@ import (
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
 
+// testAssignmentID is the shared assignment every label fixture hangs off.
+const testAssignmentID = "asg-1"
+
+// testOrderID is the shared order every label fixture hangs off.
+const testOrderID = "ord-1"
+
 var labelCases = []named{
 	{"save then get round-trips every field", func(t *testing.T, f Fixture) {
 		ctx := context.Background()
@@ -46,7 +52,7 @@ var labelCases = []named{
 		p := Seed(t, f, 1)
 		twin, _, err := label.Issue(label.NewLabel{
 			Ref: "lbl-twin", TrackingNumber: "RNTWIN", PONumber: p.Label.PONumber(), PackageNo: p.Label.PackageNo(),
-			AssignmentID: "asg-1", OrderID: "ord-1", Tier: shared.TierNextDay, StopKey: p.Label.StopKey(),
+			AssignmentID: testAssignmentID, OrderID: testOrderID, Tier: shared.TierNextDay, StopKey: p.Label.StopKey(),
 			DestinationPostalPrefix: "01310",
 		}, T0)
 		noErr(t, err)
@@ -57,7 +63,7 @@ var labelCases = []named{
 		p := Seed(t, f, 1)
 		twin, _, err := label.Issue(label.NewLabel{
 			Ref: "lbl-twin", TrackingNumber: p.Label.TrackingNumber(), PONumber: "PO-twin", PackageNo: 1,
-			AssignmentID: "asg-1", OrderID: "ord-1", Tier: shared.TierNextDay, StopKey: p.Label.StopKey(),
+			AssignmentID: testAssignmentID, OrderID: testOrderID, Tier: shared.TierNextDay, StopKey: p.Label.StopKey(),
 			DestinationPostalPrefix: "01310",
 		}, T0)
 		noErr(t, err)
@@ -68,7 +74,7 @@ var labelCases = []named{
 		p := Seed(t, f, 1)
 		second, _, err := label.Issue(label.NewLabel{
 			Ref: "lbl-second", TrackingNumber: "RNSECOND", PONumber: p.Label.PONumber(), PackageNo: 2,
-			AssignmentID: "asg-1", OrderID: "ord-1", Tier: shared.TierNextDay, StopKey: p.Label.StopKey(),
+			AssignmentID: testAssignmentID, OrderID: testOrderID, Tier: shared.TierNextDay, StopKey: p.Label.StopKey(),
 			DestinationPostalPrefix: "01310",
 		}, T0)
 		noErr(t, err)

@@ -80,8 +80,8 @@ func Card(cfg Config) *a2a.AgentCard {
 		SupportedInterfaces: []*a2a.AgentInterface{
 			a2a.NewAgentInterface(cfg.AgentURL, a2a.TransportProtocolJSONRPC),
 		},
-		DefaultInputModes:  []string{"application/json", "text/plain"},
-		DefaultOutputModes: []string{"application/json", "text/plain"},
+		DefaultInputModes:  []string{mediaTypeJSON, "text/plain"},
+		DefaultOutputModes: []string{mediaTypeJSON, "text/plain"},
 		Capabilities:       a2a.AgentCapabilities{Streaming: false},
 		Skills: []a2a.AgentSkill{
 			{
@@ -95,7 +95,7 @@ func Card(cfg Config) *a2a.AgentCard {
 					"an edge from the state it met). Answers a 404 problem when no journey has that tracking " +
 					"number. Persists nothing.",
 				Tags:       []string{"shipping", "tracking", "journey", "read"},
-				InputModes: []string{"application/json"},
+				InputModes: []string{mediaTypeJSON},
 				Examples: []string{
 					`{"skill":"get_journey","arguments":{"trackingNumber":"RN0123456789ABCDEF"}}`,
 				},
