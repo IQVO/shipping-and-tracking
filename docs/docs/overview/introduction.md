@@ -61,3 +61,7 @@ Domain-driven design study: no real company, brand or dataset; names and figures
 | See why decisions were taken | [ADR index](/docs/adr) |
 
 The design intent also lives on the central retail-network pages at [warehouse-docs](https://iqvo.github.io/warehouse-docs/network/contexts/shipping-and-tracking); this site is as built and follows the code.
+
+:::note[Disclaimer]
+This project is a domain-driven design study. It is not associated with, endorsed by or affiliated with any company, and it uses no company's code, data, logos or trademarks. All names, figures and examples are illustrative or synthetic.
+:::
