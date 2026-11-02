@@ -14,7 +14,7 @@ The use cases live in `internal/application/usecases`. Every use case that chang
 | Use case | Trigger | Inbound adapter | Events raised |
 | --- | --- | --- | --- |
 | `IssueLabel` (includes `StartJourney`) | `vendor-connectivity` | REST `POST /labels` | `LabelIssued` |
-| `VoidLabel` | operations tooling | REST `POST /labels/{labelRef}:void` | `LabelVoided` |
+| `VoidLabel` | operations tooling | REST `POST /labels/{labelRef}/voids` | `LabelVoided` |
 | `RecordScan` | any REST caller | REST `POST /journeys/{trackingNumber}/scans` | `PackageScanned`, plus `PackageHandedOver` or `PackageDelivered` on those transitions |
 | `ApplyScans` | consumed `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted` | the four Kafka consumers | same as `RecordScan`, per tracking number |
 | `ReturnToSender` | consumed `PackageReturnInitiated` | last-mile consumer | `PackageReturned` |
@@ -62,7 +62,7 @@ Source: `internal/application/usecases/labels.go`, `internal/domain/label/label.
 
 ## VoidLabel
 
-- **Trigger:** operations tooling. REST `POST /labels/{labelRef}:void`, body `reason` (1 to 500 characters), `Idempotency-Key` required.
+- **Trigger:** operations tooling. REST `POST /labels/{labelRef}/voids`, body `reason` (1 to 500 characters), `Idempotency-Key` required.
 - **Invariants:** a label can be voided only while its journey is still `LABELLED` (`ErrVoidAfterHandover` once handed over); a `VOIDED` label is returned unchanged and nothing is published.
 - **Flow:** load the label, load the journey of the same tracking number, close the journey as `VOIDED` (no journey event), move the label `ISSUED` to `VOIDED` with the reason, save both, enqueue `LabelVoided`. `200` with the label.
 - **Errors:** `not-found`, `void-after-handover`, `journey-closed`, `validation-failed`.

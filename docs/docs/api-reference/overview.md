@@ -25,7 +25,7 @@ description: "Interfaces of Shipping & Tracking: REST, Kafka events, MCP and A2A
 | Tag | Endpoint | Operation id | Success |
 | --- | --- | --- | --- |
 | Labels | `POST /labels` | `issueLabel` | `201`, the label metadata (`labelRef`, `trackingNumber`, `carrier`, ...), never the address. Reads the ship-to from customer-ordering first |
-| Labels | `POST /labels/{labelRef}:void` | `voidLabel` | `200`, the label (`VOIDED`); a label already voided is returned unchanged |
+| Labels | `POST /labels/{labelRef}/voids` | `voidLabel` | `200`, the label (`VOIDED`); a label already voided is returned unchanged |
 | Journeys | `GET /journeys/{trackingNumber}` | `getJourney` | `200`, the journey with every stored scan; `404 not-found` |
 | Journeys | `POST /journeys/{trackingNumber}/scans` | `recordScan` | `200`, the journey after the scan |
 | Health | `GET /healthz`, `GET /readyz` | none (not in the spec) | `200`; `/readyz` is `503` while Postgres or Kafka is down or the process drains |
@@ -34,8 +34,8 @@ Every POST requires an `Idempotency-Key` header.
 
 ## Conventions in the contract
 
-- **Idempotency-Key.** Required on all three POSTs (`internal/adapters/inbound/http/idempotency.go`): at most 128 characters, a repeat with the same key and body replays the first response for 24 hours, the same key with a different body is `422 validation-failed`, a missing key is `400 idempotency-key-required`. A 5xx is never cached.
-- **Errors** are RFC 9457 `application/problem+json`; `type` is a slug, the model's `Err` name in kebab-case: `validation-failed` (422), `idempotency-key-required` (400), `not-found` (404), `label-already-issued`, `tracking-number-taken`, `void-after-handover`, `duplicate-scan`, `scan-out-of-order`, `journey-closed`, `illegal-transition`, `concurrent-update` (409), `ship-to-unavailable` (503) and `internal-error` (500). Method and route misses are `method-not-allowed` (405) and `not-found` (404). Causes and remedies are on [Troubleshooting](/docs/operations/troubleshooting).
+- **Idempotency-Key.** Required on all three POSTs (`internal/adapters/inbound/http/idempotency.go`): 1-128 printable ASCII characters, global across routes. A repeat with the same key, method, path and body replays the first response for 24 hours with `Idempotency-Replayed: true`; the same key with a different method, path or body is `409 idempotency-key-reused`; a missing key is `400 idempotency-key-required` and a malformed one `400 idempotency-key-invalid`. A 5xx is never cached.
+- **Errors** are RFC 9457 `application/problem+json`; `type` is a slug, the model's `Err` name in kebab-case: `validation-failed` (422), `idempotency-key-required` and `idempotency-key-invalid` (400), `idempotency-key-reused` (409), `not-found` (404), `label-already-issued`, `tracking-number-taken`, `void-after-handover`, `duplicate-scan`, `scan-out-of-order`, `journey-closed`, `illegal-transition`, `concurrent-update` (409), `ship-to-unavailable` (503) and `internal-error` (500). Method and route misses are `method-not-allowed` (405) and `not-found` (404). Causes and remedies are on [Troubleshooting](/docs/operations/troubleshooting).
 - **Scans that are stored but not applied.** `scan-out-of-order` and `illegal-transition` answer 409 and still keep the scan with `applied=false`; `duplicate-scan` stores nothing.
 - **Request bodies** reject unknown fields (`additionalProperties: false`); timestamps are RFC 3339 UTC.
 - **No ship-to address anywhere.** No schema of either contract carries an address field (`TestContractsCarryNoShipToField`). `LabelIssued` carries only an opaque `stopKey` and a postal prefix.
@@ -45,4 +45,4 @@ Every POST requires an `Idempotency-Key` header.
 ## Code versus spec
 
 - `GET /healthz` and `GET /readyz` are registered by the router (`internal/adapters/inbound/http/server.go`) but absent from `apis/openapi.yaml`.
-- A key reused with a different body is `422 validation-failed` here (`idempotencyKeyReused = validationFailed` in `internal/adapters/inbound/http/errors.go`); this service has no `idempotency-key-reused` slug.
+- A key reused with a different request is `409 idempotency-key-reused` (ADR 0010; it was `422 validation-failed` before).

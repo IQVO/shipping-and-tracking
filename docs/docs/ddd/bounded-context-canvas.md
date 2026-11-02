@@ -152,7 +152,7 @@ It is the only context outside customer-ordering that ever sees a ship-to addres
 | offer-availability | `CatalogItemCreated` | Event | Kafka `retailnetwork.offer-availability.events`, `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | Conformist |
 | Shoppers, customer-ordering, console, agents | `GetJourney` | Query | REST `GET /journeys/{trackingNumber}`, MCP and A2A `get_journey` | Open host |
 | Not named | `RecordScan` | Command | REST `POST /journeys/{trackingNumber}/scans` | No named caller |
-| Not named | `VoidLabel` | Command | REST `POST /labels/{labelRef}:void` | No named caller |
+| Not named | `VoidLabel` | Command | REST `POST /labels/{labelRef}/voids` | No named caller |
 | Itself | `RaiseException`, `DeclareLost` | Command | the `silence-sweep` job | Internal |
 
 ## Outbound communication

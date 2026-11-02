@@ -120,7 +120,7 @@ One Postgres database, created by the single embedded migration `internal/adapte
 | `catalog_dimensions` | Local read model fed by `CatalogItemCreated` |
 | `outbox_events` | The transactional outbox, one already-encoded CloudEvents message per row, unique `(event_id, topic)` |
 | `processed_events` | The inbox: `(consumer, event_id)` claims that make the consumers idempotent |
-| `idempotency_keys` | Stored answers of the three POST routes, key `(route, key)`, 24 h retention |
+| `idempotency_keys` | Stored answers of the three POST routes, key `key` (global), 24 h retention |
 
 Postgres is the only store: every binary refuses to boot without `DATABASE_URL`. Kafka is the fleet's single broker: this service produces to `retailnetwork.shipping-and-tracking.events` and consumes `retailnetwork.vendor-connectivity.events`, `retailnetwork.linehaul-transportation.events`, `retailnetwork.last-mile-delivery.events` and `retailnetwork.offer-availability.events` (dead letters go to `<topic>.dlq`). Topics are created by the first writer; `/readyz` waits for a broker, not for topics.
 
