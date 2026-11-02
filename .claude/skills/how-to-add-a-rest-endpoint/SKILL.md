@@ -12,7 +12,7 @@ this order — domain first, adapter last — never the reverse; writing the
 HTTP handler before the domain invariant it enforces produces handlers
 that validate nothing and use cases that get bypassed.
 
-This walks the exact path `POST /labels/{labelRef}:void` took
+This walks the exact path `POST /labels/{labelRef}/voids` took
 (`internal/application/usecases/labels.go` +
 `internal/adapters/inbound/http/handlers.go`'s `handleVoidLabel`) as the
 concrete worked example — read those two files alongside this guide.
@@ -97,7 +97,7 @@ endpoint can produce).
 
 Add the path to `apis/openapi.yaml` (request/response schemas, the RFC
 9457 problem-detail response for each error case — see the existing
-`/labels/{labelRef}:void` entry for the shape).
+`/labels/{labelRef}/voids` entry for the shape).
 
 Lint it: `npx --yes @stoplight/spectral-cli lint apis/openapi.yaml --ruleset .spectral.yaml` (the `api-lint` CI job
 runs the same). Every error slug in the spec is a problem `type` the handler really returns.
