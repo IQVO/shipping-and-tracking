@@ -117,3 +117,43 @@ func TestPlaintextRoundTrip(t *testing.T) {
 		t.Fatalf("garbage must be a validation error, got %v", err)
 	}
 }
+
+func TestQuality(t *testing.T) {
+	cases := []struct {
+		name    string
+		mutate  func(*Address)
+		reasons []string
+	}{
+		{"good address", func(*Address) {}, nil},
+		{"recipient placeholder", func(a *Address) { a.Name = "Test" }, []string{"RECIPIENT_PLACEHOLDER"}},
+		{"recipient n/a", func(a *Address) { a.Name = "N/A" }, []string{"RECIPIENT_PLACEHOLDER"}},
+		{"street placeholder", func(a *Address) { a.Line1 = "Foo Bar" }, []string{"STREET_PLACEHOLDER"}},
+		{"street without number", func(a *Address) { a.Line1 = "Sample Street" }, []string{"STREET_MISSING_NUMBER"}},
+		{"city placeholder", func(a *Address) { a.City = "TBD" }, []string{"CITY_PLACEHOLDER"}},
+		{"postal too short", func(a *Address) { a.PostalCode = "0-1" }, []string{"POSTAL_CODE_TOO_SHORT"}},
+		{"every defect at once", func(a *Address) {
+			a.Name, a.Line1, a.City, a.PostalCode = "Asdf", "Qwerty", "None", "x"
+		}, []string{"RECIPIENT_PLACEHOLDER", "STREET_PLACEHOLDER", "CITY_PLACEHOLDER", "POSTAL_CODE_TOO_SHORT"}},
+		{"unit line with the number is not the street", func(a *Address) { a.Line2 = "" }, nil},
+	}
+	for _, c := range cases {
+		a := good()
+		c.mutate(&a)
+		q := a.Quality()
+		if len(q.Reasons) != len(c.reasons) {
+			t.Errorf("%s: reasons = %v, want %v", c.name, q.Reasons, c.reasons)
+			continue
+		}
+		for i, r := range c.reasons {
+			if q.Reasons[i] != r {
+				t.Errorf("%s: reason[%d] = %s, want %s", c.name, i, q.Reasons[i], r)
+			}
+		}
+		if c.reasons == nil && q.Suspect() {
+			t.Errorf("%s: verdict = %s, want CLEAN", c.name, q.Verdict)
+		}
+		if c.reasons != nil && !q.Suspect() {
+			t.Errorf("%s: verdict = %s, want SUSPECT", c.name, q.Verdict)
+		}
+	}
+}

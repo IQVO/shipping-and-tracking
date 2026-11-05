@@ -9,6 +9,7 @@ import (
 
 	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/memory"
 	"github.com/claudioed/shipping-and-tracking/internal/application/ports"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 	"github.com/claudioed/shipping-and-tracking/internal/application/usecases"
 	"github.com/claudioed/shipping-and-tracking/internal/application/views"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/journey"
@@ -161,6 +162,24 @@ func TestIssueLabelRefusesAnIncompleteAddressAndASealerFailure(t *testing.T) {
 	r.deps.Sealer = memory.MarkSealer{Err: boom}
 	_, err = usecases.NewIssueLabel(r.deps).Execute(context.Background(), issueCmd("PO-1", 1))
 	wantErr(t, err, boom)
+	if r.store.Counts().Labels != 0 {
+		t.Fatal("nothing may be stored")
+	}
+}
+
+func TestIssueLabelRefusesASuspectAddressAndStoresNothing(t *testing.T) {
+	r := newRig(t)
+	suspect := sampleAddress()
+	suspect.Name = "Test"
+	suspect.Line1 = "Sample Street" // no house number
+	r.gateway.Put("ord-1", suspect)
+	_, err := usecases.NewIssueLabel(r.deps).Execute(context.Background(), issueCmd("PO-1", 1))
+	if !errors.Is(err, shipto.ErrAddressSuspect) {
+		t.Fatalf("err = %v, want ErrAddressSuspect", err)
+	}
+	if msg := err.Error(); strings.Contains(msg, "Sampletown") || strings.Contains(msg, "01310") {
+		t.Fatalf("refusal detail leaks address values: %q", msg)
+	}
 	if r.store.Counts().Labels != 0 {
 		t.Fatal("nothing may be stored")
 	}

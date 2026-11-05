@@ -8,6 +8,7 @@ package shipto
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"unicode"
 
@@ -62,6 +63,72 @@ func (a Address) Validate() error {
 		return shared.Invalid("ship-to postalCode has no letter or digit")
 	}
 	return nil
+}
+
+// Verdict is the outcome of the deterministic deliverability evaluation.
+type Verdict string
+
+// The two verdicts.
+const (
+	VerdictClean   Verdict = "CLEAN"
+	VerdictSuspect Verdict = "SUSPECT"
+)
+
+// AddressQuality is the result of evaluating a ship-to for deliverability.
+// Reasons are fixed vocabulary tokens: they are safe to log and publish
+// because they never carry address values (the redaction rule of ADR RN-0006).
+type AddressQuality struct {
+	Verdict Verdict
+	Reasons []string
+}
+
+// Suspect reports whether the address failed the evaluation.
+func (q AddressQuality) Suspect() bool { return q.Verdict == VerdictSuspect }
+
+// ErrAddressSuspect is the label-issuance refusal for a suspect address
+// (422 address-suspect). The wrapped detail names reason tokens only.
+var ErrAddressSuspect = errors.New("ship-to address suspect")
+
+// placeholderValues carry no deliverable information. An address whose
+// recipient, line or city reduces (Alnum) to one of them passes Validate
+// (the field is non-empty) but names nobody at nowhere.
+var placeholderValues = map[string]struct{}{
+	"TEST": {}, "TESTTEST": {}, "TESTADDRESS": {}, "TESTUSER": {},
+	"FOO": {}, "FOOBAR": {}, "ASDF": {}, "QWERTY": {}, "XXX": {},
+	"NA": {}, "NAA": {}, "TBD": {}, "UNKNOWN": {}, "NONE": {},
+}
+
+// Quality evaluates the address with conservative deterministic rules:
+// only objectively broken addresses are SUSPECT (a false refusal blocks
+// fulfilment), so the rules are pattern defects Validate cannot see, not
+// risk scores. Rules: RECIPIENT_PLACEHOLDER (the recipient line is a
+// placeholder token), STREET_MISSING_NUMBER (the street line has no digit,
+// so there is no house number to deliver to), STREET_PLACEHOLDER,
+// CITY_PLACEHOLDER and POSTAL_CODE_TOO_SHORT (fewer than three alphanumerics
+// cannot carry a routable postal prefix). Address errors are the leading
+// cause of failed first attempts, and the check runs at the one place the
+// plaintext address is open: label issuance (ADR 0011).
+func (a Address) Quality() AddressQuality {
+	q := AddressQuality{Verdict: VerdictClean}
+	if _, hit := placeholderValues[Alnum(a.Name)]; hit {
+		q.Reasons = append(q.Reasons, "RECIPIENT_PLACEHOLDER")
+	}
+	street := Alnum(a.Line1)
+	if _, hit := placeholderValues[street]; hit {
+		q.Reasons = append(q.Reasons, "STREET_PLACEHOLDER")
+	} else if !strings.ContainsFunc(street, unicode.IsDigit) {
+		q.Reasons = append(q.Reasons, "STREET_MISSING_NUMBER")
+	}
+	if _, hit := placeholderValues[Alnum(a.City)]; hit {
+		q.Reasons = append(q.Reasons, "CITY_PLACEHOLDER")
+	}
+	if len(Alnum(a.PostalCode)) < 3 {
+		q.Reasons = append(q.Reasons, "POSTAL_CODE_TOO_SHORT")
+	}
+	if len(q.Reasons) > 0 {
+		q.Verdict = VerdictSuspect
+	}
+	return q
 }
 
 // Alnum upper-cases s and keeps only its letters and digits.
