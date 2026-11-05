@@ -84,6 +84,11 @@ func (u *IssueLabel) issue(ctx context.Context, cmd IssueLabelCmd, addr shipto.A
 	if err := addr.Validate(); err != nil {
 		return views.Label{}, err
 	}
+	// The one place the plaintext address is open: run the deterministic
+	// deliverability check before anything is derived or stored (ADR 0011).
+	if q := addr.Quality(); q.Suspect() {
+		return views.Label{}, fmt.Errorf("%w: %s", shipto.ErrAddressSuspect, strings.Join(q.Reasons, ", "))
+	}
 	plain, err := addr.Plaintext()
 	if err != nil {
 		return views.Label{}, fmt.Errorf("serialize ship-to: %w", err)

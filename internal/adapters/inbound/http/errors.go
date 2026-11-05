@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/ports"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/journey"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
@@ -47,6 +48,7 @@ var problemCatalogue = []struct {
 	{ports.ErrNotFound, problem{http.StatusNotFound, "not-found", "Resource not found"}},
 	{shared.ErrValidation, validationFailed},
 	{ports.ErrShipToUnavailable, problem{http.StatusServiceUnavailable, "ship-to-unavailable", "The ship-to address is unavailable"}},
+	{shipto.ErrAddressSuspect, problem{http.StatusUnprocessableEntity, "address-suspect", "The ship-to address failed the deliverability check; no label is stored"}},
 	{label.ErrLabelAlreadyIssued, problem{http.StatusConflict, "label-already-issued", "A label was already issued for this package"}},
 	{label.ErrTrackingNumberTaken, problem{http.StatusConflict, "tracking-number-taken", "The tracking number is already taken"}},
 	{journey.ErrVoidAfterHandover, problem{http.StatusConflict, "void-after-handover", "A handed-over package cannot be voided"}},

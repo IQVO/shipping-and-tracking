@@ -67,7 +67,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: validation-failed (a malformed request, or the order is unknown to customer-ordering).
+          description: >-
+            validation-failed (a malformed request, or the order is unknown to customer-ordering),
+            or address-suspect (the ship-to failed the deterministic deliverability check —
+            RECIPIENT_PLACEHOLDER, STREET_PLACEHOLDER, STREET_MISSING_NUMBER, CITY_PLACEHOLDER or
+            POSTAL_CODE_TOO_SHORT; the detail carries reason tokens only, never address values,
+            and no label is stored).
           content:
             application/problem+json:
               schema:
