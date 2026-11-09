@@ -20,7 +20,7 @@ The strategic and tactical design of `shipping-and-tracking`, drawn with the [dd
 | [EventStorming](/docs/ddd/eventstorming) | [EventStorming glossary and cheat sheet](https://github.com/ddd-crew/eventstorming-glossary-cheat-sheet) | Process-level boards with the sticky colours, plus hotspots |
 | [Ubiquitous language](/docs/ddd/ubiquitous-language) | Glossary | Every term with the Go identifier that implements it |
 | [Class diagram](/docs/ddd/class-diagram) | UML class diagram | Domain types, events, use cases, ports and the adapters that implement them |
-| [Entity relationship](/docs/ddd/entity-relationship) | ER diagram | The Postgres schema created by `0001_schema.up.sql`: eight tables, keys and indexes |
+| [Entity relationship](/docs/ddd/entity-relationship) | ER diagram | The Postgres schemas as migrated: eight OLTP tables (`0001_schema.up.sql`, `0002_idempotency_key_global.up.sql`) and four analytical tables (`analytics/migrations/0001_delivery_facts.up.sql`), keys and indexes |
 | [Sequence diagrams](/docs/ddd/sequence-diagrams) | UML sequence diagram | Issue label, void, record scan, apply scans, silence sweep and return, with error branches |
 | [Domain events](/docs/ddd/domain-events) | Event catalogue | Every event published and consumed: full CloudEvents type, topic, key, payload, producer, consumers |
 
