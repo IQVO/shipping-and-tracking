@@ -6,8 +6,9 @@ creates. A Service that selects on those two alone would select every
 component. Every Deployment here carries `app.kubernetes.io/component` in
 selector.matchLabels and its pod labels, and every Service selects on it, so
 each Service selects EXACTLY ONE Deployment. Components: api (always), mcp
-(ADR 0006, default off), a2a (ADR 0009, default off) and frontend (the nginx pod serving the shipping_mfe
-remote, ADR 0007, default off), all rendered TOGETHER here. The test also
+(ADR 0006, default off), a2a (ADR 0009, default off), frontend (the nginx pod serving the shipping_mfe
+remote, ADR 0007, default off) and the analytics read side (ADR 0012, default off: analytics-projector,
+a Deployment with NO Service, and analytics-reports), all rendered TOGETHER here. The test also
 renders with every optional template on (HPA, Ingress, HTTPRoute) and fails
 if a workload ever appears without its own selector.
 
@@ -33,6 +34,8 @@ ENABLE_EVERYTHING = BASE + [
     "--set", "mcp.enabled=true",
     "--set", "a2a.enabled=true",
     "--set", "frontend.enabled=true",
+    "--set", "analytics.enabled=true",
+    "--set", "analytics.database.projectorUrl=postgres://projector@example.invalid:5432/analytics",
 ]
 
 # The MCP and A2A servers are read-only: no Kafka, no relay, no consumers, no
@@ -43,6 +46,11 @@ MCP_STRAY = {
     "CATALOG_CONSUMER_GROUP", "SILENCE_SWEEP_INTERVAL", "HOUSEKEEPING_INTERVAL",
     "SHIP_TO_ENCRYPTION_KEY", "STOP_KEY_SECRET", "CUSTOMER_ORDERING_URL",
 }
+
+# The analytics read side never sees the OLTP database, the crypto Secret or
+# customer-ordering; the reports pod gets no Kafka and no DSN but the reader's.
+ANALYTICS_STRAY = (MCP_STRAY - {"KAFKA_BROKERS"}) | {"DATABASE_URL", "MIGRATIONS_DATABASE_URL"}
+REPORTS_STRAY = ANALYTICS_STRAY | {"KAFKA_BROKERS", "ANALYTICS_DATABASE_URL", "ANALYTICS_CONSUMER_GROUP"}
 
 
 def render(extra_args: list[str]) -> list[dict]:
@@ -88,11 +96,12 @@ def check(docs: list[dict], failures: list[str]) -> None:
     services = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Service"}
     deployments = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Deployment"}
 
-    want = sorted([RELEASE] + [f"{RELEASE}-{c}" for c in ("mcp", "a2a", "frontend")])
+    want_services = sorted([RELEASE] + [f"{RELEASE}-{c}" for c in ("mcp", "a2a", "frontend", "reports")])
+    want = sorted(want_services + [f"{RELEASE}-projector"])
     if sorted(deployments) != want:
         failures.append(f"expected the Deployments {want}, got {sorted(deployments)}")
-    if sorted(services) != want:
-        failures.append(f"expected the Services {want}, got {sorted(services)}")
+    if sorted(services) != want_services:
+        failures.append(f"expected the Services {want_services} (the projector has none), got {sorted(services)}")
     elif selector_of(services[RELEASE]).get("app.kubernetes.io/component") != "api":
         failures.append("the api Service selector must pin component=api")
 
@@ -129,6 +138,8 @@ def check(docs: list[dict], failures: list[str]) -> None:
                 failures.append(f"the A2A Deployment does not render {need}")
     if not pins(services.get(f"{RELEASE}-a2a"), "a2a"):
         failures.append("the A2A Service must exist and pin component=a2a")
+
+    check_analytics(deployments, services, failures)
 
     # The frontend Deployment serves static bytes: NO env at all.
     frontend = deployments.get(f"{RELEASE}-frontend")
@@ -179,6 +190,32 @@ def check(docs: list[dict], failures: list[str]) -> None:
                         failures.append("the HTTPRoute backend is not a Service of this chart")
 
 
+def check_analytics(deployments: dict, services: dict, failures: list[str]) -> None:
+    """The projector and the reports run their own binaries with their own env."""
+    wants = (
+        ("projector", "/app/st-projector", ANALYTICS_STRAY, ("ANALYTICS_DATABASE_URL", "KAFKA_BROKERS", "ANALYTICS_CONSUMER_GROUP", "ADMIN_ADDR", "LOG_LEVEL", "SERVICE_VERSION", "ENVIRONMENT")),
+        ("reports", "/app/st-reports", REPORTS_STRAY, ("ANALYTICS_READER_DATABASE_URL", "HTTP_ADDR", "LOG_LEVEL", "SERVICE_VERSION", "ENVIRONMENT")),
+    )
+    for suffix, command, stray_set, needs in wants:
+        dep = deployments.get(f"{RELEASE}-{suffix}")
+        if dep is None:
+            failures.append(f"the analytics {suffix} Deployment was not rendered with analytics.enabled=true")
+            continue
+        if command_of(dep) != [command]:
+            failures.append(f"the analytics {suffix} Deployment must run {command}")
+        env = set(env_names(dep))
+        stray = stray_set & env
+        if stray:
+            failures.append(f"the analytics {suffix} Deployment must not get {sorted(stray)}")
+        for need in needs:
+            if need not in env:
+                failures.append(f"the analytics {suffix} Deployment does not render {need}")
+    if not pins(services.get(f"{RELEASE}-reports"), "analytics-reports"):
+        failures.append("the reports Service must exist and pin component=analytics-reports")
+    if f"{RELEASE}-projector" in services:
+        failures.append("the projector must have no Service (it serves only its admin probes)")
+
+
 def main() -> int:
     failures: list[str] = []
     check(render(ENABLE_EVERYTHING), failures)
@@ -191,7 +228,7 @@ def main() -> int:
     if stray:
         failures.append(f"optional resources rendered with default values: {stray}")
     names = sorted(d["metadata"]["name"] for d in defaults if d.get("kind") in {"Deployment", "Service"})
-    optional = [n for n in names if n.endswith(("-mcp", "-a2a", "-frontend"))]
+    optional = [n for n in names if n.endswith(("-mcp", "-a2a", "-frontend", "-projector", "-reports"))]
     if optional:
         failures.append(f"optional components rendered with default values: {optional}")
 
@@ -199,7 +236,8 @@ def main() -> int:
         for f in failures:
             print(f"FAIL: {f}")
         return 1
-    print("PASS: every Service selects exactly one Deployment (api, mcp, a2a, frontend); the MCP and A2A "
+    print("PASS: every Service selects exactly one Deployment (api, mcp, a2a, frontend, analytics-reports; "
+          "analytics-projector has none); the MCP and A2A "
           "Deployments run /app/mcp and /app/a2a with their own env only and the frontend Deployment renders none; "
           "mcp, a2a and frontend are off by default; HPA, Ingress and HTTPRoute are off by default and target the api")
     return 0

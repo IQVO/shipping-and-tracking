@@ -29,6 +29,9 @@ description: "Interfaces of Shipping & Tracking: REST, Kafka events, MCP and A2A
 | Journeys | `GET /journeys/{trackingNumber}` | `getJourney` | `200`, the journey with every stored scan; `404 not-found` |
 | Journeys | `POST /journeys/{trackingNumber}/scans` | `recordScan` | `200`, the journey after the scan |
 | Health | `GET /healthz`, `GET /readyz` | none (not in the spec) | `200`; `/readyz` is `503` while Postgres or Kafka is down or the process drains |
+| reports | `GET /reports/package-touches?from=&to=` | `getPackageTouchesReport` | `200`, per UTC day and tier: delivered packages and touches per package (mean, p50, p90). Served by `cmd/st-reports` on `:8092` (ADR 0012) |
+| reports | `GET /reports/delivery-outcomes?from=&to=` | `getDeliveryOutcomesReport` | `200`, per UTC day: delivered, first-attempt delivered, returned, lost and the rates; `400 invalid-report-range` |
+| reports | `GET /reports/freshness` | `getReportFreshness` | `200`, `asOf` and `lagSeconds` of the analytics projection (both `null` before the first event) |
 
 Every POST requires an `Idempotency-Key` header.
 

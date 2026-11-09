@@ -54,6 +54,7 @@ Any consumer, job loop or the relay returning on its own makes the process exit 
 | consume | `retailnetwork.linehaul-transportation.events` | `LINEHAUL_CONSUMER_GROUP` | `retailnetwork.linehaul-transportation.events.dlq` |
 | consume | `retailnetwork.last-mile-delivery.events` | `LASTMILE_CONSUMER_GROUP` | `retailnetwork.last-mile-delivery.events.dlq` |
 | consume | `retailnetwork.offer-availability.events` | `CATALOG_CONSUMER_GROUP` | `retailnetwork.offer-availability.events.dlq` |
+| consume (`cmd/st-projector`, ADR 0012) | `retailnetwork.shipping-and-tracking.events` (its own topic) | `ANALYTICS_CONSUMER_GROUP` (`shipping-and-tracking-analytics`) | `retailnetwork.shipping-and-tracking.analytics.dlq` (poison only; transient failures retry forever) |
 
 Source: `internal/adapters/inbound/kafka/handlers.go` (topics), `deadletter.go` (`DLQSuffix = ".dlq"`), `internal/adapters/outbound/kafka/encoder.go` (produced topic). Group ids are chart values and must stay stable across restarts so a rescheduled pod resumes from its committed offsets.
 
