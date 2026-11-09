@@ -1,0 +1,70 @@
+---
+id: get-package-touches-report
+title: "Touches per delivered package, per day and tier"
+description: "Per UTC day of deliveredAt and per tier (UNKNOWN while the package's LabelIssued is not projected): the delivered packages and the touches per package (mean, p50, p90 continuous percentiles). A touch is an applied journey scan of type PICKUP_DEPARTURE, DEPARTURE, TRANSIT_ARRIVAL, STATION_ARRIVAL, OUT_FOR_DELIVERY or DELIVERY_FAILED (SHIPMENT_CONFIRMED and DELIVERED are not touches). Days without a delivery are omitted."
+sidebar_label: "Touches per delivered package, per day and tier"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "get api-method"
+info_path: docs/api-reference/rest/shipping-tracking-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Touches per delivered package, per day and tier"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/reports/package-touches"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Per UTC day of deliveredAt and per tier (UNKNOWN while the package's LabelIssued is not projected): the delivered packages and the touches per package (mean, p50, p90 continuous percentiles). A touch is an applied journey scan of type PICKUP_DEPARTURE, DEPARTURE, TRANSIT_ARRIVAL, STATION_ARRIVAL, OUT_FOR_DELIVERY or DELIVERY_FAILED (SHIPMENT_CONFIRMED and DELIVERED are not touches). Days without a delivery are omitted.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./get-package-touches-report.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./get-package-touches-report.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./get-package-touches-report.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

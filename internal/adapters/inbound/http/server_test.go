@@ -34,6 +34,7 @@ func newFixtureLogged(t *testing.T, logger *slog.Logger) *fixture {
 	s := memory.NewStore()
 	gw := memory.NewShipToGateway()
 	gw.Put("ord-1", shipto.Address{Name: "Ana Example", Line1: "10 Sample Street", City: "Sampletown", Region: "SP", PostalCode: "01310-100", CountryCode: "BR"})
+	gw.Put("ord-7", shipto.Address{Name: "Test", Line1: "Sample Street", City: "Sampletown", Region: "SP", PostalCode: "01310-100", CountryCode: "BR"})
 	d := usecases.Deps{
 		Labels: s.Labels(), Snapshots: s.Snapshots(), Journeys: s.Journeys(), Catalog: s.Catalog(), Inbox: s.Inbox(),
 		Outbox: s.Outbox(), UoW: s.UnitOfWork(), Clock: memory.NewClock(t0), IDs: &memory.SequentialIDs{}, ShipTo: gw,
@@ -160,6 +161,7 @@ func TestProblemDetailsOfTheErrorCatalogue(t *testing.T) {
 	}{
 		{"already issued", f.do(t, "POST", "/labels", issueBody), 409, "label-already-issued"},
 		{"unknown order", f.do(t, "POST", "/labels", strings.Replace(strings.Replace(issueBody, "ord-1", "ord-9", 1), "PO-1", "PO-9", 1)), 422, "validation-failed"},
+		{"address suspect", f.do(t, "POST", "/labels", strings.Replace(strings.Replace(issueBody, "ord-1", "ord-7", 1), "PO-1", "PO-7", 1)), 422, "address-suspect"},
 		{"ship-to down", unavailable, 503, "ship-to-unavailable"},
 		{"bad tier", f.do(t, "POST", "/labels", strings.Replace(issueBody, "NEXT_DAY", "WEEKLY", 1)), 422, "validation-failed"},
 		{"package zero", f.do(t, "POST", "/labels", strings.Replace(issueBody, `"packageNo":1`, `"packageNo":0`, 1)), 422, "validation-failed"},

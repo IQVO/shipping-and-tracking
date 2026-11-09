@@ -24,3 +24,5 @@ The *Status* column is copied from each ADR's own `## Status` section.
 | [0008](./0008-fleet-observability-standard.md) | adopt the fleet observability standard (logs, metrics, traces) | Accepted (2026-10-26) |
 | [0009](./0009-a2a-inbound-adapter.md) | an A2A inbound adapter: one read-only skill over the existing query | Accepted (2026-10-29) |
 | [0010](./0010-adopt-the-fleet-rest-api-guideline.md) | adopt the fleet REST API guideline | Accepted (2026-11-01) |
+| [0011](./0011-label-time-address-deliverability-check.md) | label-time address deliverability check | Accepted (2026-11-05) |
+| [0012](./0012-analytics-read-side.md) | analytics read side | Accepted (2026-11-08) |

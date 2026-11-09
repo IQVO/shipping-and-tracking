@@ -175,7 +175,8 @@ jobs:
   # Fast, BLOCKING mutation gate: runs on every push/PR so a drop in test
   # quality (tests that execute but stop asserting) is caught immediately.
   # It loops gremlins over EVERY package under internal/domain/ (shared,
-  # label, journey), one package at a time, exactly as `make mutation` does.
+  # label, journey) and the pure analytics read model internal/analytics/report
+  # (ADR 0012), one package at a time, exactly as `make mutation` does.
   # Thresholds/workers/timeout come from .gremlins.yaml, so this job, the
   # scheduled `mutation` job below and `make mutation` all agree. The
   # exhaustive run stays in the `mutation` job.
@@ -192,9 +193,9 @@ jobs:
           go-version-file: go.mod
       - name: Install gremlins
         run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
-      - name: Mutation testing (every domain package)
+      - name: Mutation testing (every domain package and the analytics read model)
         run: |
-          for pkg in ./internal/domain/*/; do
+          for pkg in ./internal/domain/*/ ./internal/analytics/report/; do
             echo "== gremlins unleash ${pkg%/}"
             gremlins unleash "${pkg%/}" || exit 1
           done

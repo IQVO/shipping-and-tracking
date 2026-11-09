@@ -19,7 +19,9 @@ info:
     and operations tooling. No authentication, consistent with the fleet.
     Errors are RFC 9457 problem details. The shared problem types are
     not-found (404), illegal-transition (409), concurrent-update (409) and
-    validation-failed (422), plus one slug per model Err name.
+    validation-failed (422), plus one slug per model Err name. The read-only
+    analytics reports (tag reports, ADR 0012) are served by cmd/st-reports on
+    its own port (per-path server) from the separate analytical database.
 servers:
   - url: http://localhost:8080
 tags:
@@ -27,6 +29,11 @@ tags:
     description: Shipping labels (aggregate ShippingLabel).
   - name: Journeys
     description: Package journeys (aggregate PackageJourney).
+  - name: reports
+    description: >-
+      Read-only analytics reports (ADR 0012), served by cmd/st-reports from the
+      separate analytical database the projector feeds from this context's own
+      events. Days are UTC calendar days; from and to are inclusive dates.
 paths:
   /labels:
     post:
@@ -67,7 +74,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: validation-failed (a malformed request, or the order is unknown to customer-ordering).
+          description: >-
+            validation-failed (a malformed request, or the order is unknown to customer-ordering),
+            or address-suspect (the ship-to failed the deterministic deliverability check —
+            RECIPIENT_PLACEHOLDER, STREET_PLACEHOLDER, STREET_MISSING_NUMBER, CITY_PLACEHOLDER or
+            POSTAL_CODE_TOO_SHORT; the detail carries reason tokens only, never address values,
+            and no label is stored).
           content:
             application/problem+json:
               schema:
@@ -191,6 +203,89 @@ paths:
           $ref: '#/components/responses/ValidationFailed'
         '500':
           $ref: '#/components/responses/InternalError'
+  /reports/package-touches:
+    servers:
+      - url: http://localhost:8092
+    get:
+      tags: [reports]
+      operationId: getPackageTouchesReport
+      x-pagination-exempt: report
+      summary: Touches per delivered package, per day and tier
+      description: >-
+        Per UTC day of deliveredAt and per tier (UNKNOWN while the package's
+        LabelIssued is not projected): the delivered packages and the touches
+        per package (mean, p50, p90 continuous percentiles). A touch is an
+        applied journey scan of type PICKUP_DEPARTURE, DEPARTURE,
+        TRANSIT_ARRIVAL, STATION_ARRIVAL, OUT_FOR_DELIVERY or DELIVERY_FAILED
+        (SHIPMENT_CONFIRMED and DELIVERED are not touches). Days without a
+        delivery are omitted.
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+      responses:
+        '200':
+          description: The report for the range.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageTouchesReport'
+        '400':
+          $ref: '#/components/responses/InvalidReportRange'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /reports/delivery-outcomes:
+    servers:
+      - url: http://localhost:8092
+    get:
+      tags: [reports]
+      operationId: getDeliveryOutcomesReport
+      x-pagination-exempt: report
+      summary: Delivery outcomes and first-attempt success, per day
+      description: >-
+        Per UTC day of the outcome instant (deliveredAt, returnedAt,
+        declaredAt): packages delivered, delivered at the first attempt (no
+        DELIVERY_FAILED scan), returned to the sender and lost.
+        firstAttemptSuccessRate = firstAttemptDelivered / (packagesDelivered +
+        packagesReturnedToSender + packagesLost); lostRate and
+        returnToSenderRate share that denominator;
+        meanAttemptsPerDeliveredPackage = (packagesDelivered + DELIVERY_FAILED
+        scans of the delivered packages) / packagesDelivered, null on a day
+        without deliveries. Days without an outcome are omitted.
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+      responses:
+        '200':
+          description: The report for the range.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryOutcomesReport'
+        '400':
+          $ref: '#/components/responses/InvalidReportRange'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /reports/freshness:
+    servers:
+      - url: http://localhost:8092
+    get:
+      tags: [reports]
+      operationId: getReportFreshness
+      summary: How far the analytics projection is behind
+      description: >-
+        asOf is the CloudEvents time of the newest event the projector
+        applied; lagSeconds is now minus asOf, never negative. Both are null
+        until the first event. One endpoint for every report: they all read
+        the same projection.
+      responses:
+        '200':
+          description: The projection's freshness.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportFreshness'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
     IdempotencyKey:
@@ -214,6 +309,22 @@ components:
       required: true
       schema:
         type: string
+    ReportFrom:
+      name: from
+      in: query
+      required: false
+      description: First UTC day of the range, inclusive. Omitted = 29 days before `to` (a 30-day range).
+      schema:
+        type: string
+        format: date
+    ReportTo:
+      name: to
+      in: query
+      required: false
+      description: Last UTC day of the range, inclusive. Omitted = today. At most 366 days from `from`.
+      schema:
+        type: string
+        format: date
   headers:
     IdempotencyReplayed:
       description: Present, with the value true, only when the response is a replay of the answer stored for the Idempotency-Key.
@@ -241,6 +352,12 @@ components:
             $ref: '#/components/schemas/Problem'
     NotFound:
       description: not-found. The addressed label or journey does not exist.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InvalidReportRange:
+      description: invalid-report-range. from or to is not a date (YYYY-MM-DD), from is after to, or the range exceeds 366 days.
       content:
         application/problem+json:
           schema:
@@ -391,6 +508,100 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Scan'
+    PackageTouchesReport:
+      type: object
+      required: [from, to, days]
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackageTouchesDay'
+    PackageTouchesDay:
+      type: object
+      required: [day, tier, packagesDelivered, meanTouchesPerPackage, p50TouchesPerPackage, p90TouchesPerPackage]
+      properties:
+        day:
+          type: string
+          format: date
+        tier:
+          type: string
+          description: The package's service tier, or UNKNOWN while its LabelIssued is not projected.
+        packagesDelivered:
+          type: integer
+          minimum: 1
+        meanTouchesPerPackage:
+          type: number
+        p50TouchesPerPackage:
+          type: number
+        p90TouchesPerPackage:
+          type: number
+    DeliveryOutcomesReport:
+      type: object
+      required: [from, to, days]
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryOutcomesDay'
+    DeliveryOutcomesDay:
+      type: object
+      required: [day, packagesDelivered, firstAttemptDelivered, packagesReturnedToSender, packagesLost, firstAttemptSuccessRate, meanAttemptsPerDeliveredPackage, lostRate, returnToSenderRate]
+      properties:
+        day:
+          type: string
+          format: date
+        packagesDelivered:
+          type: integer
+          minimum: 0
+        firstAttemptDelivered:
+          type: integer
+          minimum: 0
+        packagesReturnedToSender:
+          type: integer
+          minimum: 0
+        packagesLost:
+          type: integer
+          minimum: 0
+        firstAttemptSuccessRate:
+          type: number
+          minimum: 0
+          maximum: 1
+        meanAttemptsPerDeliveredPackage:
+          type: number
+          minimum: 1
+          nullable: true
+        lostRate:
+          type: number
+          minimum: 0
+          maximum: 1
+        returnToSenderRate:
+          type: number
+          minimum: 0
+          maximum: 1
+    ReportFreshness:
+      type: object
+      required: [asOf, lagSeconds]
+      properties:
+        asOf:
+          type: string
+          format: date-time
+          nullable: true
+        lagSeconds:
+          type: number
+          minimum: 0
+          nullable: true
     Problem:
       type: object
       description: RFC 9457 problem details.

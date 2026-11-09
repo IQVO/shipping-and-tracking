@@ -14,6 +14,7 @@ Routes to use cases, kept in sync with `apis/openapi.yaml` by hand (Spectral lin
 - `GET /journeys/{trackingNumber}` -> `GetJourney` (200; 404)
 - `POST /journeys/{trackingNumber}/scans` -> `RecordScan` (200; 404; 409 `duplicate-scan` / `scan-out-of-order` / `illegal-transition` / `journey-closed`; 422)
 - `GET /healthz` (liveness), `GET /readyz` (drain gate, Postgres ping, Kafka metadata; 503 `dependency-unavailable`)
+- Not served by `cmd/api`: the read-only `GET /reports/...` routes (tag `reports`, `cmd/st-reports`, `internal/adapters/inbound/reportshttp`, ADR 0012; rules in `.claude/rules/analytics.md`).
 
 ## Conventions
 

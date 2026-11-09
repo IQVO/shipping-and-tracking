@@ -109,7 +109,10 @@ func ReadN(t *testing.T, topic string, n int, timeout time.Duration) []Message {
 // the broker's acknowledgement.
 func Produce(t *testing.T, topic string, msgs ...Message) {
 	t.Helper()
-	w := &kafkago.Writer{Addr: kafkago.TCP(Brokers(t)...), Topic: topic, Balancer: &kafkago.Hash{}, RequiredAcks: kafkago.RequireAll, BatchTimeout: 10 * time.Millisecond}
+	// Its own Transport: kafkago.DefaultTransport caches topic metadata across
+	// writers, so a topic created after an earlier Produce would stay unknown.
+	w := &kafkago.Writer{Addr: kafkago.TCP(Brokers(t)...), Topic: topic, Balancer: &kafkago.Hash{}, RequiredAcks: kafkago.RequireAll,
+		BatchTimeout: 10 * time.Millisecond, Transport: &kafkago.Transport{}}
 	defer func() { _ = w.Close() }()
 	out := make([]kafkago.Message, len(msgs))
 	for i, m := range msgs {
