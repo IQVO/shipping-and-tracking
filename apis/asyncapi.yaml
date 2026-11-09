@@ -41,6 +41,15 @@ info:
     dispatches on the full `type`, ignores unknown types and fields, and parks a
     poison message on `<topic>.dlq`; a transient failure is retried five times first.
 
+    **Own events, read back for analytics (ADR 0012).** The analytics projector
+    (`cmd/st-projector`) reads this context's OWN integration topic in the fixed group
+    `shipping-and-tracking-analytics` and projects LabelIssued, PackageScanned,
+    PackageDelivered, PackageReturned and PackageLost into a separate analytical
+    database. It dedupes on the CloudEvents `id` in the same transaction as the
+    projection, dead-letters only deterministic poison to
+    `retailnetwork.shipping-and-tracking.analytics.dlq` and retries transient failures
+    without a bound. It reads no sibling's topic.
+
     **Envelope (mandatory).** CloudEvents 1.0, structured content mode, Kafka
     header `content-type: application/cloudevents+json; charset=UTF-8`.
     `specversion`, `id`, `source` (`/retailnetwork/shipping-and-tracking`), `type`,
@@ -158,6 +167,26 @@ operations:
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageHandedOver"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageDelivered"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageExceptionRaised"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageReturned"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageLost"
+  projectOwnEventsForAnalytics:
+    action: receive
+    title: Project this context's own events into the analytical database
+    summary: The analytics projector reads back five of the events this service publishes (ADR 0012).
+    description: |
+      Inbound adapter internal/adapters/inbound/kafka/analytics_consumer.go, run by
+      cmd/st-projector in the consumer group ANALYTICS_CONSUMER_GROUP (default
+      shipping-and-tracking-analytics). Dispatches on the full `type`; LabelVoided,
+      PackageHandedOver and PackageExceptionRaised are acknowledged without projection;
+      any other type or a non-CloudEvents message is skipped with a sampled warning.
+    tags:
+      - name: shipping-and-tracking
+    channel:
+      $ref: "#/channels/shippingAndTrackingEvents"
+    messages:
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/LabelIssued"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageScanned"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageDelivered"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageReturned"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageLost"
   consumeVendorConnectivityEvents:
