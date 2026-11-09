@@ -29,3 +29,9 @@ The four consumers are ON, each under a stable group id:
 
 Ship-to addresses are read from customer-ordering ({{ .Values.config.customerOrderingUrl }}) per label and kept only
 as an AES-256-GCM snapshot; the key lives in the Secret {{ include "shipping-and-tracking.cryptoSecretName" . }}.
+{{- if .Values.analytics.enabled }}
+
+Analytics read side (ADR 0012): {{ include "shipping-and-tracking.projectorFullname" . }} projects
+retailnetwork.shipping-and-tracking.events (group {{ .Values.analytics.projector.consumerGroup }}) into the
+analytical database; {{ include "shipping-and-tracking.reportsFullname" . }} serves GET /reports/... read-only.
+{{- end }}
