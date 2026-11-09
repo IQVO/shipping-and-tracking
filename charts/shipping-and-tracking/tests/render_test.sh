@@ -421,6 +421,7 @@ if grep -q 'kind: HTTPRoute' <<<"$analytics_all"; then fail "the reports HTTPRou
 reports_route="$(tpl "${base[@]}" "${an[@]}" --set analytics.reports.route.enabled=true --show-only templates/analytics-reports-route.yaml)"
 grep -q 'replacePrefixMatch: /reports' <<<"$reports_route" || fail "the reports HTTPRoute must rewrite its prefix to /reports"
 grep -q 'value: /api/shipping-and-tracking/reports' <<<"$reports_route" || fail "the reports HTTPRoute must listen on /api/shipping-and-tracking/reports"
+grep -q 'konghq.com/regex-priority: "10"$' <<<"$reports_route" || fail "the reports HTTPRoute must carry konghq.com/regex-priority \"10\" so it outranks the API prefix under Kong's traditional router"
 an_off="$(tpl "${base[@]}" --set analytics.reports.route.enabled=true --set analytics.database.projectorUrl=postgres://p@h/a)"
 if grep -q 'component: analytics' <<<"$an_off"; then fail "nothing of analytics may render while analytics.enabled is false"; fi
 # Refusals: a DSN source, the brokers and a consumer group.
