@@ -109,7 +109,7 @@ Source: `cmd/api/main.go` (`buildDeps`, `buildServer`, `startConsumers`, `startJ
 
 ## Data stores
 
-One Postgres database, created by the single embedded migration `internal/adapters/outbound/postgres/migrations/0001_schema.up.sql` and shared by the three binaries (`cmd/api` writes, `cmd/mcp` and `cmd/a2a` only read):
+The OLTP Postgres database, created by the embedded migrations `0001_schema` and `0002_idempotency_key_global` under `internal/adapters/outbound/postgres/migrations/` and shared by the three binaries (`cmd/api` writes, `cmd/mcp` and `cmd/a2a` only read):
 
 | Table | Holds |
 | --- | --- |
@@ -122,7 +122,7 @@ One Postgres database, created by the single embedded migration `internal/adapte
 | `processed_events` | The inbox: `(consumer, event_id)` claims that make the consumers idempotent |
 | `idempotency_keys` | Stored answers of the three POST routes, key `key` (global), 24 h retention |
 
-Postgres is the only store: every binary refuses to boot without `DATABASE_URL`. Kafka is the fleet's single broker: this service produces to `retailnetwork.shipping-and-tracking.events` and consumes `retailnetwork.vendor-connectivity.events`, `retailnetwork.linehaul-transportation.events`, `retailnetwork.last-mile-delivery.events` and `retailnetwork.offer-availability.events` (dead letters go to `<topic>.dlq`). Topics are created by the first writer; `/readyz` waits for a broker, not for topics.
+Postgres is the only store: `cmd/api`, `cmd/mcp` and `cmd/a2a` refuse to boot without `DATABASE_URL`. A second, separate Postgres database holds the analytics read model (`analytics_processed_events`, `package_labels`, `journey_scans`, `package_outcomes`; see the [entity relationship](/docs/ddd/entity-relationship) page); it is written only by `cmd/st-projector` and read by `cmd/st-reports`. Kafka is the fleet's single broker: this service produces to `retailnetwork.shipping-and-tracking.events` and consumes `retailnetwork.vendor-connectivity.events`, `retailnetwork.linehaul-transportation.events`, `retailnetwork.last-mile-delivery.events` and `retailnetwork.offer-availability.events` (dead letters go to `<topic>.dlq`). Topics are created by the first writer; `/readyz` waits for a broker, not for topics.
 
 ## Rules enforced by `internal/architecture`
 
