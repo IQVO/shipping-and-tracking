@@ -71,7 +71,7 @@ func TestProjectorBootsMigratesProjectsAndStopsCleanly(t *testing.T) {
 	t.Cleanup(cancel)
 
 	waitUntil(t, "/readyz 200", func() bool {
-		resp, err := http.Get("http://" + addr + "/readyz") //nolint:noctx // local probe
+		resp, err := http.Get("http://" + addr + "/readyz")
 		if err != nil {
 			return false
 		}

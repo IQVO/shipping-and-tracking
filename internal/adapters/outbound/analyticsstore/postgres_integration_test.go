@@ -25,22 +25,22 @@ import (
 // One analytical Postgres per test binary (testcontainers, never skipped, never
 // an env DSN); every test gets its own database.
 var (
-	pgOnce sync.Once
-	pgC    *tcpostgres.PostgresContainer
-	pgErr  error
-	dbSeq  atomic.Int64
+	pgOnce     sync.Once
+	pgC        *tcpostgres.PostgresContainer
+	errPGStart error
+	dbSeq      atomic.Int64
 )
 
 func adminURL(t *testing.T) string {
 	t.Helper()
 	pgOnce.Do(func() {
-		pgC, pgErr = tcpostgres.Run(context.Background(), "postgres:16-alpine",
+		pgC, errPGStart = tcpostgres.Run(context.Background(), "postgres:16-alpine",
 			tcpostgres.WithDatabase("postgres"), tcpostgres.WithUsername("analytics"), tcpostgres.WithPassword("analytics"),
 			testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).WithStartupTimeout(90*time.Second)))
 	})
-	if pgErr != nil {
-		t.Fatalf("start postgres: %v", pgErr)
+	if errPGStart != nil {
+		t.Fatalf("start postgres: %v", errPGStart)
 	}
 	url, err := pgC.ConnectionString(context.Background(), "sslmode=disable")
 	if err != nil {

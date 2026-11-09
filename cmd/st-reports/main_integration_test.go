@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 
 func getJSON(t *testing.T, url string) (int, map[string]any) {
 	t.Helper()
-	resp, err := http.Get(url) //nolint:noctx // local probe
+	resp, err := http.Get(url)
 	if err != nil {
 		return 0, nil
 	}
@@ -32,6 +32,16 @@ func getJSON(t *testing.T, url string) (int, map[string]any) {
 	var body map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	return resp.StatusCode, body
+}
+
+func waitReady(t *testing.T, url string) {
+	t.Helper()
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		if code, _ := getJSON(t, url); code == http.StatusOK {
+			return
+		}
+	}
+	t.Fatal("/readyz never answered 200")
 }
 
 // The real entry point over a projected analytical database: /readyz, a
@@ -65,14 +75,7 @@ func TestReportsServeTheProjectionAndStopCleanly(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- run(runCtx, func(k string) string { return env[k] }) }()
 
-	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(100 * time.Millisecond) {
-		if code, _ := getJSON(t, "http://"+addr+"/readyz"); code == http.StatusOK {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("/readyz never answered 200")
-		}
-	}
+	waitReady(t, "http://"+addr+"/readyz")
 	code, body := getJSON(t, "http://"+addr+"/reports/delivery-outcomes?from=2026-11-03&to=2026-11-03")
 	days, _ := body["days"].([]any)
 	if code != http.StatusOK || len(days) != 1 || days[0].(map[string]any)["packagesLost"] != 1.0 {
