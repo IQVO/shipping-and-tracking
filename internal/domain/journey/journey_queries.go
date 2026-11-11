@@ -60,6 +60,7 @@ func (j *Journey) Snapshot() Snapshot {
 		TrackingNumber: j.tracking, LabelRef: j.labelRef, PONumber: j.poNumber, AssignmentID: j.assignmentID,
 		OrderID: j.orderID, Tier: j.tier, State: j.state, Scans: j.Scans(), StartedAt: j.startedAt,
 		LastScanAt: j.lastScanAt, LastNodeID: j.lastNodeID, HandedOverAt: j.handedOverAt, DeliveredAt: j.deliveredAt,
-		ClosedAt: j.closedAt, LastExceptionAt: j.lastExceptedAt, Version: j.version,
+		ClosedAt: j.closedAt, LastExceptionAt: j.lastExceptedAt, EtaStart: j.etaStart, EtaEnd: j.etaEnd,
+		EtaAssignedAt: j.etaAssignedAt, Version: j.version,
 	}
 }

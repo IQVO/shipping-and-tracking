@@ -58,6 +58,9 @@ type Journey struct {
 	deliveredAt    time.Time
 	closedAt       time.Time
 	lastExceptedAt time.Time
+	etaStart       time.Time
+	etaEnd         time.Time
+	etaAssignedAt  time.Time
 	version        int64
 }
 
@@ -78,6 +81,9 @@ type Snapshot struct {
 	DeliveredAt     time.Time
 	ClosedAt        time.Time
 	LastExceptionAt time.Time
+	EtaStart        time.Time
+	EtaEnd          time.Time
+	EtaAssignedAt   time.Time
 	Version         int64
 }
 
