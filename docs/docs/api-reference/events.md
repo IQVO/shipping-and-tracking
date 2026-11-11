@@ -2,7 +2,7 @@
 id: events
 title: Event catalogue
 sidebar_label: Events
-description: "The CloudEvents Shipping & Tracking publishes on retailnetwork.shipping-and-tracking.events and the seven types it consumes from four topics."
+description: "The CloudEvents Shipping & Tracking publishes on retailnetwork.shipping-and-tracking.events and the eight types it consumes from four topics."
 ---
 
 # Event catalogue
@@ -40,8 +40,9 @@ Delivery is at-least-once through the transactional outbox: the aggregate rows a
 | `journey.PackageExceptionRaised` | silence sweep, reason `NO_SCAN` | `trackingNumber`, `assignmentId`, `orderId`, `reason`, `at` | delivery-promise, customer-ordering |
 | `journey.PackageReturned` | `AT_STATION` to `RETURNED` | `trackingNumber`, `orderId`, `returnedAt` | delivery-promise |
 | `journey.PackageLost` | `IN_TRANSIT` to `LOST` | `trackingNumber`, `orderId`, `declaredAt` | delivery-promise |
+| `journey.PackageEtaWindowAssigned` | `ApplyEtaWindows`, one per package of the stop | `trackingNumber`, `assignmentId`, `orderId`, `etaStart`, `etaEnd`, `assignedAt` | customer-ordering (tracking view) |
 
-A handover or delivery raises two events in one transaction: `PackageScanned` and the milestone event. A scan stored out of order or without an edge raises nothing. No event carries a ship-to address; `stopKey` is the HMAC-SHA-256 (64 lower-case hex characters) of the normalised address and `destinationPostalPrefix` its first five letters or digits.
+A handover or delivery raises two events in one transaction: `PackageScanned` and the milestone event. A scan stored out of order or without an edge raises nothing. `PackageEtaWindowAssigned` is not a scan: it carries the day-of ETA window of the package's stop and never changes the state (ADR 0013). No event carries a ship-to address; `stopKey` is the HMAC-SHA-256 (64 lower-case hex characters) of the normalised address and `destinationPostalPrefix` its first five letters or digits.
 
 Example (`LabelIssued`, from the AsyncAPI; the values are synthetic):
 
@@ -82,6 +83,7 @@ Each topic has one consumer group (an environment variable, mandatory), a dead-l
 | `retailnetwork.last-mile-delivery.events` | `com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery` | `OUT_FOR_DELIVERY` scan at `stationNodeId` |
 | `retailnetwork.last-mile-delivery.events` | `com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted` | outcome `DELIVERED` gives a `DELIVERED` scan, any other outcome `DELIVERY_FAILED` (back to `AT_STATION`) |
 | `retailnetwork.last-mile-delivery.events` | `com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated` (the `route` spelling is accepted as an alias) | `ReturnToSender`: `AT_STATION` to `RETURNED`, raising `PackageReturned` |
+| `retailnetwork.last-mile-delivery.events` | `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned` | `AssignEta` on every tracking number of the stop (the CloudEvents `time` is the `assignedAt`); raises `PackageEtaWindowAssigned`; the stop key is dropped |
 | `retailnetwork.offer-availability.events` | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | upsert of the local `catalog_dimensions` read model |
 
 Scan ids of consumed events are `<CloudEvents id>:<trackingNumber>`, so a multi-package load event is idempotent per package. Events for tracking numbers this service did not label are counted as unknown and acknowledged.

@@ -42,6 +42,7 @@ Reads the state of a package and every stored scan, in the order they were recor
 | `poNumber`, `assignmentId`, `orderId` | string | identity of the purchase order, fulfillment assignment and customer order of the label |
 | `tier` | string | `SAME_DAY`, `NEXT_DAY`, `TWO_DAY` or `STANDARD` |
 | `handedOverAt`, `deliveredAt` | string (RFC 3339), omitted until they happen | handover and delivery instants |
+| `etaStart`, `etaEnd` | string (RFC 3339) | the day-of ETA window; present only while `state` is `OUT_FOR_DELIVERY` and the window is not older than the last applied scan (ADR 0013) |
 | `scans` | array | every stored scan, never null in practice (the schema allows `null` or an array) |
 | `scans[].scanId` | string | idempotency id of the scan |
 | `scans[].nodeId` | string | node where it was seen |

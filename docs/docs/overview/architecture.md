@@ -15,7 +15,7 @@ Shipping & Tracking follows the fleet's hexagonal (ports and adapters) layout: d
 | Layer | Path | Role |
 | --- | --- | --- |
 | Domain | `internal/domain/label` | `ShippingLabel` aggregate (`ISSUED`, `VOIDED`): identity `labelRef`, tracking number, tier, carrier, opaque `stopKey`, postal prefix, optimistic `version`. Events `LabelIssued`, `LabelVoided`. Pure Go: clock and ids are arguments, `Snapshot`/`Restore` |
-| Domain | `internal/domain/journey` | `PackageJourney` aggregate with its `Scan` entities: nine states, eight scan types, the edge table, the silence policy. Events `PackageScanned`, `PackageHandedOver`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost` |
+| Domain | `internal/domain/journey` | `PackageJourney` aggregate with its `Scan` entities: nine states, eight scan types, the edge table, the silence policy. Events `PackageScanned`, `PackageHandedOver`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost`, `PackageEtaWindowAssigned` |
 | Domain | `internal/domain/shared` | `Tier`, `TrackingNumber`, id validation, `ErrValidation`, `ErrIllegalTransition`, the event header |
 | Application | `internal/application/usecases` | The use cases (see [Use cases](/docs/ddd/use-cases)) and the `writer` skeleton that saves an aggregate and hands its events to the outbox inside one unit of work |
 | Application | `internal/application/{ports,repository,outbox,shipto,views}` | The OUT ports (`ShipToGateway`, `ShipToSealer`, `StopKeyer`, repositories, `UnitOfWork`, `Clock`, `IDGenerator`, `LabelMetrics`), the records they exchange, the already-encoded outbox `Message`, the `shipto.Address` value object that redacts itself, and the read views |
