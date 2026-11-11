@@ -22,9 +22,9 @@ new scan type would enter the state-machine edge table (ADR 0002 A5, A13). The c
 - Type `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned`, topic
   `retailnetwork.last-mile-delivery.events` (consumer group `LASTMILE_CONSUMER_GROUP`, already required). Dispatch is on
   the full type string in `LastMileHandlers`.
-- Data relied on: `routeId`, `stopNo` (integer >= 1), `stopKey` (opaque), `trackingNumbers[]` (at least 1, stop order),
+- Data relied on: `routeId`, `trackingNumbers[]` (at least 1, stop order),
   `etaStart`, `etaEnd` (RFC 3339 UTC). The CloudEvents `time` is the route start instant and is the `assignedAt`.
-  Decoding is tolerant: unknown fields are ignored; blank `trackingNumbers`, a non-positive `stopNo` or `etaStart >= etaEnd`
+  Decoding is tolerant: unknown fields are ignored; blank `trackingNumbers` or `etaStart >= etaEnd`
   is a bad payload and is dead-lettered.
 - Use case `ApplyEtaWindows`, same shape as `ApplyScans`: one unit, `Inbox.Claim(consumer, eventId)` first, then per tracking
   number: unknown journey counted, closed journey counted, stale ETA counted, otherwise saved and published.

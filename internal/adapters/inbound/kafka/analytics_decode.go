@@ -32,9 +32,10 @@ func projectedKinds() map[string]report.Kind {
 // without a warning, because no report needs them (ADR 0012).
 func acknowledgedTypes() map[string]bool {
 	return map[string]bool{
-		cloudevents.Type(entityLabel, "LabelVoided"):              true,
-		cloudevents.Type(entityJourney, "PackageHandedOver"):      true,
-		cloudevents.Type(entityJourney, "PackageExceptionRaised"): true,
+		cloudevents.Type(entityLabel, "LabelVoided"):                true,
+		cloudevents.Type(entityJourney, "PackageHandedOver"):        true,
+		cloudevents.Type(entityJourney, "PackageExceptionRaised"):   true,
+		cloudevents.Type(entityJourney, "PackageEtaWindowAssigned"): true,
 	}
 }
 

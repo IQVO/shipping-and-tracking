@@ -46,6 +46,7 @@ func Run(t *testing.T, factory Factory) {
 		{"Label", labelCases},
 		{"Snapshots", snapshotCases},
 		{"Journey", journeyCases},
+		{"JourneyEta", journeyEtaCases},
 		{"Stale", staleCases},
 		{"Catalog", catalogCases},
 		{"Inbox", inboxCases},

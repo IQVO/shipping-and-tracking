@@ -29,6 +29,7 @@ CloudEvents `type`, deduplicated on the CloudEvents `id` in `processed_events` (
 | last-mile-delivery (Conformist) | `com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery` | `trackingNumber`, `stationNodeId`, `at` | `OUT_FOR_DELIVERY` scan |
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted` | `trackingNumber`, `outcome`, `at` | `DELIVERED` or `DELIVERY_FAILED` scan |
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated` (also accepted: `com.retailnetwork.logistics.last-mile-delivery.route.PackageReturnInitiated`) | `trackingNumber` | `ReturnToSender` |
+| last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned` (ADR 0013) | `trackingNumbers[]`, `etaStart`, `etaEnd`; the CloudEvents `time` is the `assignedAt` | `AssignEta` per tracking number (the day-of ETA window; not a scan) |
 | offer-availability (Conformist) | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | upsert `catalog_dimensions` |
 
 The entity segment of `PackageReturnInitiated` is `packageattempthistory` in last-mile-delivery's pushed

@@ -32,11 +32,68 @@ type packageReturnInitiatedData struct {
 	At             time.Time `json:"at"`
 }
 
+// stopEtaWindowAssignedData is the tolerant local copy of last-mile-delivery's
+// StopEtaWindowAssigned (ADR 0013). stopNo, stopKey and routeId are not used:
+// the stop key is an opaque stop identifier this context does not keep.
+type stopEtaWindowAssignedData struct {
+	TrackingNumbers []string  `json:"trackingNumbers"`
+	EtaStart        time.Time `json:"etaStart"`
+	EtaEnd          time.Time `json:"etaEnd"`
+}
+
+// etaHandler maps StopEtaWindowAssigned to the day-of ETA window of every
+// package of the stop. assignedAt is the CloudEvents time: the route start.
+func etaHandler(etas EtaApplier, logger *slog.Logger) HandlerFunc {
+	return func(ctx context.Context, e ce.Event) error {
+		d, err := decodeData[stopEtaWindowAssignedData](e)
+		if err != nil {
+			return err
+		}
+		tns, err := etaTrackingNumbers(d)
+		if err != nil {
+			return err
+		}
+		assignedAt, err := at(time.Time{}, e, "time")
+		if err != nil {
+			return err
+		}
+		res, err := etas.Execute(ctx, usecases.ApplyEtaWindowsCmd{
+			Consumer: ConsumerLastMile, EventID: e.ID(), TrackingNumbers: tns,
+			Start: d.EtaStart.UTC(), End: d.EtaEnd.UTC(), AssignedAt: assignedAt,
+		})
+		if err != nil {
+			return err
+		}
+		logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped, "applied", res.Applied,
+			"stale", res.Stale, "closed", res.Closed, "unknown", res.Unknown)
+		return nil
+	}
+}
+
+// etaTrackingNumbers validates the payload: a stop has at least one package,
+// none of them blank, and the window has a positive width.
+func etaTrackingNumbers(d stopEtaWindowAssignedData) ([]shared.TrackingNumber, error) {
+	if len(d.TrackingNumbers) == 0 {
+		return nil, fmt.Errorf("%w: trackingNumbers is empty", errBadPayload)
+	}
+	if d.EtaStart.IsZero() || d.EtaEnd.IsZero() || !d.EtaStart.Before(d.EtaEnd) {
+		return nil, fmt.Errorf("%w: etaStart must be before etaEnd", errBadPayload)
+	}
+	out := make([]shared.TrackingNumber, len(d.TrackingNumbers))
+	for i, tn := range d.TrackingNumbers {
+		if tn == "" {
+			return nil, fmt.Errorf("%w: trackingNumbers holds a blank value", errBadPayload)
+		}
+		out[i] = shared.TrackingNumber(tn)
+	}
+	return out, nil
+}
+
 // LastMileHandlers maps PackageOutForDelivery to OUT_FOR_DELIVERY,
 // DeliveryAttempted to DELIVERED or DELIVERY_FAILED (the scan takes the node of
-// the journey's last applied scan, A21) and PackageReturnInitiated to
-// ReturnToSender.
-func LastMileHandlers(scans ScanApplier, returner Returner, logger *slog.Logger) map[string]HandlerFunc {
+// the journey's last applied scan, A21), PackageReturnInitiated to
+// ReturnToSender and StopEtaWindowAssigned to the day-of ETA window.
+func LastMileHandlers(scans ScanApplier, returner Returner, etas EtaApplier, logger *slog.Logger) map[string]HandlerFunc {
 	logger = defaultLogger(logger)
 	returnHandler := func(ctx context.Context, e ce.Event) error {
 		d, err := decodeData[packageReturnInitiatedData](e)
@@ -88,6 +145,7 @@ func LastMileHandlers(scans ScanApplier, returner Returner, logger *slog.Logger)
 			}
 			return applyScans(ctx, logger, scans, ConsumerLastMile, e, facts(nonBlank(d.TrackingNumber), "", typ, when, false))
 		},
+		TypeStopEtaWindowAssigned:         etaHandler(etas, logger),
 		TypePackageReturnInitiated:        returnHandler,
 		TypePackageReturnInitiatedOnRoute: returnHandler,
 	}

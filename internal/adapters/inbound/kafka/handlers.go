@@ -30,6 +30,7 @@ const (
 	TypeLoadArrived             = "com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived"
 	TypePackageOutForDelivery   = "com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery"
 	TypeDeliveryAttempted       = "com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted"
+	TypeStopEtaWindowAssigned   = "com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned"
 	// The entity segment of PackageReturnInitiated is last-mile-delivery's
 	// choice (ADR 0003): the pushed AsyncAPI says packageattempthistory; the
 	// route spelling is a tolerated alias.
@@ -61,6 +62,11 @@ type ScanApplier interface {
 // Returner is the ReturnToSender use case.
 type Returner interface {
 	Execute(ctx context.Context, cmd usecases.ReturnCmd) (usecases.ReturnResult, error)
+}
+
+// EtaApplier is the ApplyEtaWindows use case (ADR 0013).
+type EtaApplier interface {
+	Execute(ctx context.Context, cmd usecases.ApplyEtaWindowsCmd) (usecases.EtaResult, error)
 }
 
 // CatalogRecorder is the RecordCatalogItem use case.
@@ -241,8 +247,8 @@ func NewLinehaulConsumer(brokers []string, groupID string, uc ScanApplier, logge
 
 // NewLastMileConsumer reads last-mile-delivery's topic under groupID
 // (LASTMILE_CONSUMER_GROUP).
-func NewLastMileConsumer(brokers []string, groupID string, scans ScanApplier, returner Returner, logger *slog.Logger) *Consumer {
-	return newConsumer("last-mile consumer", brokers, LastMileTopic, groupID, LastMileHandlers(scans, returner, logger), logger)
+func NewLastMileConsumer(brokers []string, groupID string, scans ScanApplier, returner Returner, etas EtaApplier, logger *slog.Logger) *Consumer {
+	return newConsumer("last-mile consumer", brokers, LastMileTopic, groupID, LastMileHandlers(scans, returner, etas, logger), logger)
 }
 
 // NewCatalogConsumer reads offer-availability's topic under groupID
