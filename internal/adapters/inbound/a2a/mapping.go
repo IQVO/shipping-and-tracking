@@ -110,6 +110,8 @@ type journeyDTO struct {
 	Tier           string    `json:"tier"`
 	HandedOverAt   string    `json:"handedOverAt,omitempty"`
 	DeliveredAt    string    `json:"deliveredAt,omitempty"`
+	EtaStart       string    `json:"etaStart,omitempty"`
+	EtaEnd         string    `json:"etaEnd,omitempty"`
 	Scans          []scanDTO `json:"scans"`
 }
 
@@ -138,6 +140,9 @@ func toJourneyDTO(v views.Journey) journeyDTO {
 	}
 	if v.DeliveredAt != nil {
 		out.DeliveredAt = instant(*v.DeliveredAt)
+	}
+	if v.EtaStart != nil && v.EtaEnd != nil {
+		out.EtaStart, out.EtaEnd = instant(*v.EtaStart), instant(*v.EtaEnd)
 	}
 	return out
 }
