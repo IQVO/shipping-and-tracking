@@ -121,8 +121,49 @@ func (PackageLost) Entity() string { return entity }
 // SubjectID returns the trackingNumber.
 func (e PackageLost) SubjectID() string { return string(e.TrackingNumber) }
 
+// PackageEtaWindowAssigned is raised by AssignEta; the state is unchanged.
+type PackageEtaWindowAssigned struct {
+	shared.Header
+	TrackingNumber TrackingNumber
+	AssignmentID   string
+	OrderID        string
+	EtaStart       time.Time
+	EtaEnd         time.Time
+	AssignedAt     time.Time
+}
+
+// PackageDeliveryPointFlagged is raised by FlagDeliveryPoint; the state is
+// unchanged (ADR 0014).
+type PackageDeliveryPointFlagged struct {
+	shared.Header
+	TrackingNumber TrackingNumber
+	AssignmentID   string
+	OrderID        string
+	Reason         string
+	FlaggedAt      time.Time
+}
+
+// EventName returns "PackageDeliveryPointFlagged".
+func (PackageDeliveryPointFlagged) EventName() string { return "PackageDeliveryPointFlagged" }
+
+// Entity returns "journey".
+func (PackageDeliveryPointFlagged) Entity() string { return entity }
+
+// SubjectID returns the trackingNumber.
+func (e PackageDeliveryPointFlagged) SubjectID() string { return string(e.TrackingNumber) }
+
+// EventName returns "PackageEtaWindowAssigned".
+func (PackageEtaWindowAssigned) EventName() string { return "PackageEtaWindowAssigned" }
+
+// Entity returns "journey".
+func (PackageEtaWindowAssigned) Entity() string { return entity }
+
+// SubjectID returns the trackingNumber.
+func (e PackageEtaWindowAssigned) SubjectID() string { return string(e.TrackingNumber) }
+
 var (
 	_ shared.Event = PackageScanned{}
+	_ shared.Event = PackageEtaWindowAssigned{}
 	_ shared.Event = PackageHandedOver{}
 	_ shared.Event = PackageDelivered{}
 	_ shared.Event = PackageExceptionRaised{}

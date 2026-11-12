@@ -22,21 +22,21 @@ info:
     journey, the one customer-visible timeline consolidated from vendor handover,
     load and delivery facts (ADR 0001, ADR 0002).
 
-    **Published.** Eight events, all on `retailnetwork.shipping-and-tracking.events`,
+    **Published.** Nine events, all on `retailnetwork.shipping-and-tracking.events`,
     through a **transactional outbox**: the aggregate rows and their already-encoded
     events are written in ONE database transaction and an always-on relay drains
     them to Kafka (at-least-once; the CloudEvents `id` is stored with the outbox row,
-    so a retry republishes the same `id`). The eight types are catalogued in ADR 0004.
+    so a retry republishes the same `id`). The nine types are catalogued in ADR 0004.
     Every one is an integration event: the model's analytics-only events
     (LabelVoided, PackageReturned, PackageLost) were promoted by contracts-delta
     E6 and E16, so nothing is published on `retailnetwork.shipping-and-tracking.analytics`.
     No event carries a ship-to address or any part of it (the opaque `stopKey` and the
     postal prefix on LabelIssued are the only derived values; ADR 0002 A9, A10).
 
-    **Consumed.** Seven types from four topics (ADR 0003): vendor-connectivity
+    **Consumed.** Eight types from four topics (ADR 0003): vendor-connectivity
     VendorShipmentConfirmed, linehaul-transportation LoadDeparted and LoadArrived,
-    last-mile-delivery PackageOutForDelivery, DeliveryAttempted and
-    PackageReturnInitiated, offer-availability CatalogItemCreated. Each consumer
+    last-mile-delivery PackageOutForDelivery, DeliveryAttempted,
+    PackageReturnInitiated and StopEtaWindowAssigned, offer-availability CatalogItemCreated. Each consumer
     group dedupes on the CloudEvents `id` (inbox table `processed_events`),
     dispatches on the full `type`, ignores unknown types and fields, and parks a
     poison message on `<topic>.dlq`; a transient failure is retried five times first.
@@ -100,6 +100,10 @@ channels:
         $ref: "#/components/messages/PackageReturned"
       PackageLost:
         $ref: "#/components/messages/PackageLost"
+      PackageEtaWindowAssigned:
+        $ref: "#/components/messages/PackageEtaWindowAssigned"
+      PackageDeliveryPointFlagged:
+        $ref: "#/components/messages/PackageDeliveryPointFlagged"
   vendorConnectivityEvents:
     address: retailnetwork.vendor-connectivity.events
     title: vendor-connectivity integration topic (consumed)
@@ -136,6 +140,10 @@ channels:
         $ref: "#/components/messages/DeliveryAttempted"
       PackageReturnInitiated:
         $ref: "#/components/messages/PackageReturnInitiated"
+      StopEtaWindowAssigned:
+        $ref: "#/components/messages/StopEtaWindowAssigned"
+      DeliveryPointFlagged:
+        $ref: "#/components/messages/DeliveryPointFlagged"
   offerAvailabilityEvents:
     address: retailnetwork.offer-availability.events
     title: offer-availability integration topic (consumed)
@@ -151,7 +159,7 @@ operations:
   publishShippingAndTrackingEvents:
     action: send
     title: Publish shipping-and-tracking events
-    summary: Publish the eight shipping-and-tracking events through the transactional outbox.
+    summary: Publish the nine shipping-and-tracking events through the transactional outbox.
     description: |
       The service sends every event of its two aggregates (ShippingLabel,
       PackageJourney) to `retailnetwork.shipping-and-tracking.events`. Consumers route
@@ -169,6 +177,7 @@ operations:
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageExceptionRaised"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageReturned"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageLost"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageEtaWindowAssigned"
   projectOwnEventsForAnalytics:
     action: receive
     title: Project this context's own events into the analytical database
@@ -177,7 +186,7 @@ operations:
       Inbound adapter internal/adapters/inbound/kafka/analytics_consumer.go, run by
       cmd/st-projector in the consumer group ANALYTICS_CONSUMER_GROUP (default
       shipping-and-tracking-analytics). Dispatches on the full `type`; LabelVoided,
-      PackageHandedOver and PackageExceptionRaised are acknowledged without projection;
+      PackageHandedOver, PackageExceptionRaised and PackageEtaWindowAssigned are acknowledged without projection;
       any other type or a non-CloudEvents message is skipped with a sampled warning.
     tags:
       - name: shipping-and-tracking
@@ -223,7 +232,7 @@ operations:
   consumeLastMileDeliveryEvents:
     action: receive
     title: Consume last-mile-delivery events
-    summary: Receive PackageOutForDelivery, DeliveryAttempted, PackageReturnInitiated from last-mile-delivery.
+    summary: Receive PackageOutForDelivery, DeliveryAttempted, PackageReturnInitiated, StopEtaWindowAssigned, DeliveryPointFlagged from last-mile-delivery.
     description: |
       Inbound adapter under internal/adapters/inbound/kafka. Reads `retailnetwork.last-mile-delivery.events` in the
       consumer group named by an environment variable (mandatory), records the CloudEvents
@@ -237,6 +246,8 @@ operations:
       - $ref: "#/channels/lastMileEvents/messages/PackageOutForDelivery"
       - $ref: "#/channels/lastMileEvents/messages/DeliveryAttempted"
       - $ref: "#/channels/lastMileEvents/messages/PackageReturnInitiated"
+      - $ref: "#/channels/lastMileEvents/messages/StopEtaWindowAssigned"
+      - $ref: "#/channels/lastMileEvents/messages/DeliveryPointFlagged"
   consumeOfferAvailabilityEvents:
     action: receive
     title: Consume offer-availability events
@@ -501,6 +512,69 @@ components:
                 "declaredAt": "2026-10-27T13:00:00Z"
               }
             }
+    PackageEtaWindowAssigned:
+      name: PackageEtaWindowAssigned
+      title: A package got its day-of ETA window
+      summary: A package got its day-of ETA window.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageEtaWindowAssigned`; Raised by AssignEta when last-mile-delivery's StopEtaWindowAssigned names the package (ADR 0013). Subject and key = the trackingNumber. Not a scan: the journey state does not change. `etaStart`/`etaEnd` are the window as last-mile-delivery stated it and `assignedAt` is the instant the route started; a later event for the same package replaces an earlier one. Consumers decide whether the window is still current from the package's OUT_FOR_DELIVERY scan time: it is current only while the package is out for delivery and `assignedAt` is not before that scan. No address, stop key or free text is carried."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageEtaWindowAssignedEvent"
+      examples:
+        - name: packageEtaWindowAssigned
+          summary: A package got its day-of ETA window.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c09",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageEtaWindowAssigned",
+              "subject": "STT00000000000042",
+              "time": "2026-10-24T09:00:01Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageEtaWindowAssigned:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "assignmentId": "asg-001",
+                "orderId": "ord-001",
+                "etaStart": "2026-10-24T13:00:00Z",
+                "etaEnd": "2026-10-24T15:00:00Z",
+                "assignedAt": "2026-10-24T09:00:00Z"
+              }
+            }
+    PackageDeliveryPointFlagged:
+      name: PackageDeliveryPointFlagged
+      title: The delivery point of a package was flagged
+      summary: The delivery point of a package failed twice (ADR 0014).
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDeliveryPointFlagged`; subject and key = the tracking number. Raised by RelayDeliveryPointFlag when last-mile-delivery flags the delivery point behind a stop - one event per journey, so customer-ordering can warn the shopper by orderId. The state is unchanged; a newer flag replaces an older one. Consumer: customer-ordering (ADR 0015 there)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageDeliveryPointFlaggedEvent"
+      examples:
+        - name: packageDeliveryPointFlagged
+          summary: The delivery point of a package failed twice.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "5b8e4c2a-1d3f-4e69-b7f2-2f1a5d6c8e24",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDeliveryPointFlagged",
+              "subject": "STT00000000000042",
+              "time": "2026-10-24T16:30:05Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageDeliveryPointFlagged:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "assignmentId": "asg-001",
+                "orderId": "ord-001",
+                "reason": "NOT_HOME",
+                "flaggedAt": "2026-10-24T16:30:00Z"
+              }
+            }
     VendorShipmentConfirmed:
       name: VendorShipmentConfirmed
       title: VendorShipmentConfirmed (consumed from vendor-connectivity)
@@ -692,6 +766,73 @@ components:
                 "trackingNumber": "STT00000000000042"
               }
             }
+    StopEtaWindowAssigned:
+      name: StopEtaWindowAssigned
+      title: StopEtaWindowAssigned (consumed from last-mile-delivery)
+      summary: A stop of a started route got its ETA window (ADR 0013).
+      description: "`type` = `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned`. Raised when a route starts, one per stop, after every PackageOutForDelivery, under the routeId key. Becomes the day-of ETA window of every package of the stop (PackageEtaWindowAssigned). The CloudEvents `time` is the route start instant and is the assignedAt. `stopNo`, `stopKey` and `routeId` are not used: this service keeps no stop identifier. Blank trackingNumbers or etaStart not before etaEnd is poison."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/StopEtaWindowAssignedEvent"
+      examples:
+        - name: stopEtaWindowAssigned
+          summary: StopEtaWindowAssigned as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "4a7d3b1f-2c9e-4d58-8a61-1e0f9c3b5d15",
+              "source": "/retailnetwork/last-mile-delivery",
+              "type": "com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned",
+              "subject": "route-3",
+              "time": "2026-10-24T09:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:last-mile-delivery:events:StopEtaWindowAssigned:v1",
+              "data": {
+                "routeId": "route-3",
+                "stopNo": 1,
+                "stopKey": "pkg:STT00000000000042",
+                "trackingNumbers": [
+                  "STT00000000000042"
+                ],
+                "etaStart": "2026-10-24T13:00:00Z",
+                "etaEnd": "2026-10-24T15:00:00Z"
+              }
+            }
+    DeliveryPointFlagged:
+      name: DeliveryPointFlagged
+      title: DeliveryPointFlagged (consumed from last-mile-delivery)
+      summary: The delivery point behind a stop failed twice (ADR 0014).
+      description: "`type` = `com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged`. One per flagged stop with every tracking number of the stop. Consumed by RelayDeliveryPointFlag - the flag is stored on each journey and relayed per package as PackageDeliveryPointFlagged. stopKey and failures are read and dropped."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/DeliveryPointFlaggedEvent"
+      examples:
+        - name: deliveryPointFlagged
+          summary: DeliveryPointFlagged as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "6c9f5d3b-2e4a-4f70-c8a3-3a2b6e7d9f35",
+              "source": "/retailnetwork/last-mile-delivery",
+              "type": "com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged",
+              "subject": "9f2c7a44e1d8b6f3a5c0e9d2b7f4a1c8e6d3b9f5a2c7e4d1b8f6a3c5e7d9f1b4",
+              "time": "2026-10-24T16:30:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:last-mile-delivery:events:DeliveryPointFlagged:v1",
+              "data": {
+                "stopKey": "9f2c7a44e1d8b6f3a5c0e9d2b7f4a1c8e6d3b9f5a2c7e4d1b8f6a3c5e7d9f1b4",
+                "reason": "NOT_HOME",
+                "failures": 2,
+                "trackingNumbers": [
+                  "STT00000000000042"
+                ],
+                "flaggedAt": "2026-10-24T16:30:00Z"
+              }
+            }
     CatalogItemCreated:
       name: CatalogItemCreated
       title: CatalogItemCreated (consumed from offer-availability)
@@ -871,6 +1012,22 @@ components:
                 orderId: {"type": "string"}
                 declaredAt: {"type": "string", "format": "date-time"}
 
+    PackageEtaWindowAssignedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "assignmentId", "orderId", "etaStart", "etaEnd", "assignedAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                orderId: {"type": "string"}
+                etaStart: {"type": "string", "format": "date-time"}
+                etaEnd: {"type": "string", "format": "date-time", "description": "After etaStart."}
+                assignedAt: {"type": "string", "format": "date-time", "description": "The route start instant: the CloudEvents time of the consumed StopEtaWindowAssigned."}
+
     VendorShipmentConfirmedEvent:
       allOf:
         - $ref: "#/components/schemas/CloudEventEnvelope"
@@ -960,6 +1117,52 @@ components:
               properties:
                 trackingNumber: {"type": "string"}
                 at: {"type": "string", "format": "date-time", "description": "Falls back to the CloudEvents time."}
+
+    StopEtaWindowAssignedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumbers", "etaStart", "etaEnd"]
+              properties:
+                routeId: {"type": "string"}
+                stopNo: {"type": "integer", "minimum": 1}
+                stopKey: {"type": "string", "description": "Opaque stop identifier; read and dropped."}
+                trackingNumbers: {"type": "array", "minItems": 1, "items": {"type": "string"}}
+                etaStart: {"type": "string", "format": "date-time"}
+                etaEnd: {"type": "string", "format": "date-time", "description": "After etaStart."}
+
+    PackageDeliveryPointFlaggedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "assignmentId", "orderId", "reason", "flaggedAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                orderId: {"type": "string"}
+                reason: {"type": "string", "enum": ["NOT_HOME", "ACCESS_PROBLEM"], "description": "A code the storefront words; never driver prose."}
+                flaggedAt: {"type": "string", "format": "date-time"}
+
+    DeliveryPointFlaggedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumbers", "reason", "flaggedAt"]
+              properties:
+                stopKey: {"type": "string", "description": "Opaque stop identifier; read and dropped."}
+                reason: {"type": "string", "enum": ["NOT_HOME", "ACCESS_PROBLEM"]}
+                failures: {"type": "integer", "minimum": 2}
+                trackingNumbers: {"type": "array", "minItems": 1, "items": {"type": "string"}}
+                flaggedAt: {"type": "string", "format": "date-time"}
 
     CatalogItemCreatedEvent:
       allOf:

@@ -74,6 +74,7 @@ func TestAnalyticsConsumerAcknowledgesTheUnprojectedOwnTypesSilently(t *testing.
 	c := analyticsConsumer(p, dlq, slog.New(warns))
 	for _, m := range []struct{ entity, name string }{
 		{entityLabel, "LabelVoided"}, {entityJourney, "PackageHandedOver"}, {entityJourney, "PackageExceptionRaised"},
+		{entityJourney, "PackageEtaWindowAssigned"},
 	} {
 		msg := kafkago.Message{Value: ownEvent(t, m.entity, m.name, "STT1", map[string]any{"trackingNumber": "STT1"})}
 		if err := c.HandleMessage(context.Background(), msg); err != nil {

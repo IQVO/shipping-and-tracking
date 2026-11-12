@@ -18,6 +18,7 @@ The use cases live in `internal/application/usecases`. Every use case that chang
 | `RecordScan` | any REST caller | REST `POST /journeys/{trackingNumber}/scans` | `PackageScanned`, plus `PackageHandedOver` or `PackageDelivered` on those transitions |
 | `ApplyScans` | consumed `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted` | the four Kafka consumers | same as `RecordScan`, per tracking number |
 | `ReturnToSender` | consumed `PackageReturnInitiated` | last-mile consumer | `PackageReturned` |
+| `ApplyEtaWindows` (`AssignEta`) | consumed `StopEtaWindowAssigned` | last-mile consumer | `PackageEtaWindowAssigned`, per tracking number |
 | `SweepSilence` (`RaiseException`, `DeclareLost`) | timer, `SILENCE_SWEEP_INTERVAL` (5 m), also at start | scheduler job `silence-sweep` | `PackageExceptionRaised`, `PackageLost` |
 | `PurgeShipTo` | timer, `HOUSEKEEPING_INTERVAL` (1 h), also at start | scheduler job `ship-to-purge` | none |
 | `Housekeeping` of the technical tables | timer, `HOUSEKEEPING_INTERVAL`, also at start | scheduler job `housekeeping` (`postgres.Housekeeping`) | none |
@@ -82,6 +83,15 @@ Sources: `usecases/scans.go`, `internal/domain/journey/journey.go`, `internal/ad
 - **Trigger:** consumed `PackageReturnInitiated` (last-mile-delivery, third failed attempt).
 - **Invariant:** only an `AT_STATION` journey can be returned. A closed journey and an unknown tracking number are acknowledged; a journey not yet `AT_STATION` returns `ErrIllegalTransition`, which the consumer retries because the failed-attempt scan may still be on its way.
 - **Flow:** claim the event, move `AT_STATION` to `RETURNED`, enqueue `PackageReturned` (`returnedAt` from the event).
+
+## ApplyEtaWindows: AssignEta
+
+Source: `usecases/eta.go`, `internal/domain/journey/journey_eta.go` (ADR 0013).
+
+- **Trigger:** consumed `StopEtaWindowAssigned` (last-mile-delivery, when a route starts; one event per stop).
+- **Flow:** claim the event id, then for each tracking number of the stop: load the journey, `AssignEta(etaStart, etaEnd, assignedAt)`, save, enqueue `PackageEtaWindowAssigned`. The window is not a scan: the state does not change.
+- **Invariants:** a terminal journey refuses it (`ErrJourneyClosed`), an `assignedAt` not strictly newer than the stored one is stale (`ErrEtaStale`). Both, and an unknown tracking number, are counted and acknowledged; a replay of the event is skipped by the inbox.
+- **Reading it:** `Journey.EtaCurrent` is true while the state is `OUT_FOR_DELIVERY` and the window was assigned at or after the last applied scan; only then do REST, MCP and A2A `get_journey` carry `etaStart` and `etaEnd`.
 
 ## SweepSilence: RaiseException and DeclareLost
 

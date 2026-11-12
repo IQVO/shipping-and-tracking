@@ -18,6 +18,7 @@ func TestEveryEventIdentifiesItsAggregateAndName(t *testing.T) {
 		{PackageExceptionRaised{Header: h, TrackingNumber: "T1"}, "PackageExceptionRaised"},
 		{PackageReturned{Header: h, TrackingNumber: "T1"}, "PackageReturned"},
 		{PackageLost{Header: h, TrackingNumber: "T1"}, "PackageLost"},
+		{PackageEtaWindowAssigned{Header: h, TrackingNumber: "T1"}, "PackageEtaWindowAssigned"},
 	}
 	for _, c := range cases {
 		if c.ev.EventName() != c.name || c.ev.Entity() != "journey" || c.ev.SubjectID() != "T1" ||

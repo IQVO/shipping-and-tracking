@@ -198,6 +198,10 @@ func journeyPayload(ev shared.Event) (any, error) {
 		return packageReturnedData{TrackingNumber: string(e.TrackingNumber), OrderID: e.OrderID, ReturnedAt: ts(e.ReturnedAt)}, nil
 	case journey.PackageLost:
 		return packageLostData{TrackingNumber: string(e.TrackingNumber), OrderID: e.OrderID, DeclaredAt: ts(e.DeclaredAt)}, nil
+	case journey.PackageEtaWindowAssigned:
+		return etaPayload(e), nil
+	case journey.PackageDeliveryPointFlagged:
+		return pointFlagPayload(e), nil
 	}
 	return nil, fmt.Errorf("kafka encoder: %s is not a published event", ev.EventName())
 }

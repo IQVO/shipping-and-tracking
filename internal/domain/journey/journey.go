@@ -43,22 +43,27 @@ type Scan struct {
 
 // Journey is the aggregate root.
 type Journey struct {
-	tracking       TrackingNumber
-	labelRef       string
-	poNumber       string
-	assignmentID   string
-	orderID        string
-	tier           shared.Tier
-	state          State
-	scans          []Scan
-	startedAt      time.Time
-	lastScanAt     time.Time
-	lastNodeID     string
-	handedOverAt   time.Time
-	deliveredAt    time.Time
-	closedAt       time.Time
-	lastExceptedAt time.Time
-	version        int64
+	tracking        TrackingNumber
+	labelRef        string
+	poNumber        string
+	assignmentID    string
+	orderID         string
+	tier            shared.Tier
+	state           State
+	scans           []Scan
+	startedAt       time.Time
+	lastScanAt      time.Time
+	lastNodeID      string
+	handedOverAt    time.Time
+	deliveredAt     time.Time
+	closedAt        time.Time
+	lastExceptedAt  time.Time
+	etaStart        time.Time
+	etaEnd          time.Time
+	etaAssignedAt   time.Time
+	pointFlagReason string
+	pointFlaggedAt  time.Time
+	version         int64
 }
 
 // Snapshot is the persisted form of a journey. Restore validates it.
@@ -78,6 +83,11 @@ type Snapshot struct {
 	DeliveredAt     time.Time
 	ClosedAt        time.Time
 	LastExceptionAt time.Time
+	EtaStart        time.Time
+	EtaEnd          time.Time
+	EtaAssignedAt   time.Time
+	PointFlagReason string
+	PointFlaggedAt  time.Time
 	Version         int64
 }
 
@@ -217,153 +227,4 @@ func (j *Journey) apply(in ScanInput, to State, now time.Time) []shared.Event {
 		})
 	}
 	return evs
-}
-
-func (j *Journey) closedErr() error {
-	return fmt.Errorf("%w: journey %s is %s", ErrJourneyClosed, j.tracking, j.state)
-}
-
-// RaiseException records a NO_SCAN exception in any open state; the state does
-// not change (RaiseException).
-func (j *Journey) RaiseException(now time.Time) ([]shared.Event, error) {
-	if j.state.Terminal() {
-		return nil, j.closedErr()
-	}
-	j.lastExceptedAt = shared.UTC(now)
-	j.version++
-	return []shared.Event{PackageExceptionRaised{
-		Header: shared.Header{Version: j.version, At: j.lastExceptedAt}, TrackingNumber: j.tracking,
-		AssignmentID: j.assignmentID, OrderID: j.orderID, Reason: ReasonNoScan, RaisedAt: j.lastExceptedAt,
-	}}, nil
-}
-
-// ReturnToSender moves an AT_STATION journey to RETURNED (ReturnToSender).
-func (j *Journey) ReturnToSender(returnedAt, now time.Time) ([]shared.Event, error) {
-	if err := j.closeFrom(StateAtStation, StateReturned, now); err != nil {
-		return nil, err
-	}
-	return []shared.Event{PackageReturned{
-		Header: shared.Header{Version: j.version, At: shared.UTC(now)}, TrackingNumber: j.tracking,
-		OrderID: j.orderID, ReturnedAt: shared.UTC(returnedAt),
-	}}, nil
-}
-
-// DeclareLost moves an IN_TRANSIT journey to LOST (DeclareLost).
-func (j *Journey) DeclareLost(declaredAt, now time.Time) ([]shared.Event, error) {
-	if err := j.closeFrom(StateInTransit, StateLost, now); err != nil {
-		return nil, err
-	}
-	return []shared.Event{PackageLost{
-		Header: shared.Header{Version: j.version, At: shared.UTC(now)}, TrackingNumber: j.tracking,
-		OrderID: j.orderID, DeclaredAt: shared.UTC(declaredAt),
-	}}, nil
-}
-
-func (j *Journey) closeFrom(from, to State, now time.Time) error {
-	if j.state.Terminal() {
-		return j.closedErr()
-	}
-	if j.state != from {
-		return fmt.Errorf("%w: journey %s is %s, not %s", shared.ErrIllegalTransition, j.tracking, j.state, from)
-	}
-	j.state = to
-	j.closedAt = shared.UTC(now)
-	j.version++
-	return nil
-}
-
-// Void closes a LABELLED journey as VOIDED (ADR 0002 A13). It raises no event:
-// LabelVoided announces the void.
-func (j *Journey) Void(now time.Time) error {
-	if j.state.Terminal() {
-		return j.closedErr()
-	}
-	if j.state != StateLabelled {
-		return fmt.Errorf("%w: journey %s is %s", ErrVoidAfterHandover, j.tracking, j.state)
-	}
-	j.state = StateVoided
-	j.closedAt = shared.UTC(now)
-	j.version++
-	return nil
-}
-
-// unanswered reports whether a NO_SCAN exception was raised and no applied scan
-// arrived since.
-func (j *Journey) unanswered() bool {
-	return !j.lastExceptedAt.IsZero() && !j.lastExceptedAt.Before(j.lastScanAt)
-}
-
-// Silent reports whether ExceptionOnSilence must raise NO_SCAN now: a watched
-// state, a window with no applied scan, and no exception already raised for
-// this silence (ADR 0002 A7).
-func (j *Journey) Silent(now time.Time) bool {
-	w := SilenceWindow(j.tier, j.state)
-	if w == 0 || j.lastScanAt.IsZero() || j.unanswered() {
-		return false
-	}
-	return !now.Before(j.lastScanAt.Add(w))
-}
-
-// Lost reports whether the package must be declared lost now: IN_TRANSIT with
-// a NO_SCAN exception that stayed unanswered for LostAfterException (ADR 0002 A8).
-func (j *Journey) Lost(now time.Time) bool {
-	return j.state == StateInTransit && j.unanswered() && !now.Before(j.lastExceptedAt.Add(LostAfterException()))
-}
-
-// TrackingNumber returns the root id.
-func (j *Journey) TrackingNumber() TrackingNumber { return j.tracking }
-
-// LabelRef returns the label of the package.
-func (j *Journey) LabelRef() string { return j.labelRef }
-
-// PONumber returns the purchase order number.
-func (j *Journey) PONumber() string { return j.poNumber }
-
-// AssignmentID returns the fulfillment assignment id.
-func (j *Journey) AssignmentID() string { return j.assignmentID }
-
-// OrderID returns the customer order id.
-func (j *Journey) OrderID() string { return j.orderID }
-
-// Tier returns the service tier.
-func (j *Journey) Tier() shared.Tier { return j.tier }
-
-// State returns the current state.
-func (j *Journey) State() State { return j.state }
-
-// Scans returns a copy of the stored scans in the order they were recorded.
-func (j *Journey) Scans() []Scan { return append([]Scan(nil), j.scans...) }
-
-// StartedAt returns when the journey was started.
-func (j *Journey) StartedAt() time.Time { return j.startedAt }
-
-// LastScanAt returns the instant of the last applied scan (zero before any).
-func (j *Journey) LastScanAt() time.Time { return j.lastScanAt }
-
-// LastNodeID returns the node of the last applied scan (empty before any).
-func (j *Journey) LastNodeID() string { return j.lastNodeID }
-
-// HandedOverAt returns the handover instant (zero before handover).
-func (j *Journey) HandedOverAt() time.Time { return j.handedOverAt }
-
-// DeliveredAt returns the delivery instant (zero unless DELIVERED).
-func (j *Journey) DeliveredAt() time.Time { return j.deliveredAt }
-
-// ClosedAt returns when the journey reached a terminal state (zero while open).
-func (j *Journey) ClosedAt() time.Time { return j.closedAt }
-
-// LastExceptionAt returns when the last exception was raised (zero if none).
-func (j *Journey) LastExceptionAt() time.Time { return j.lastExceptedAt }
-
-// Version returns the aggregate version.
-func (j *Journey) Version() int64 { return j.version }
-
-// Snapshot returns the persisted form.
-func (j *Journey) Snapshot() Snapshot {
-	return Snapshot{
-		TrackingNumber: j.tracking, LabelRef: j.labelRef, PONumber: j.poNumber, AssignmentID: j.assignmentID,
-		OrderID: j.orderID, Tier: j.tier, State: j.state, Scans: j.Scans(), StartedAt: j.startedAt,
-		LastScanAt: j.lastScanAt, LastNodeID: j.lastNodeID, HandedOverAt: j.handedOverAt, DeliveredAt: j.deliveredAt,
-		ClosedAt: j.closedAt, LastExceptionAt: j.lastExceptedAt, Version: j.version,
-	}
 }

@@ -48,6 +48,14 @@ func orZero(t *time.Time) time.Time {
 	return t.UTC()
 }
 
+// orString reads a nullable string column (nil is the empty string).
+func orString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 func nullString(s string) *string {
 	if s == "" {
 		return nil

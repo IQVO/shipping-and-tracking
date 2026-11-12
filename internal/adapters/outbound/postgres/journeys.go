@@ -26,23 +26,29 @@ func NewJourneyRepo(pool *pgxpool.Pool) *JourneyRepo { return &JourneyRepo{pool:
 var _ ports.JourneyRepository = (*JourneyRepo)(nil)
 
 const journeyColumns = `tracking_number, label_ref, po_number, assignment_id, order_id, tier, state, started_at, last_scan_at,
-	last_node_id, handed_over_at, delivered_at, closed_at, last_exception_at, version`
+	last_node_id, handed_over_at, delivered_at, closed_at, last_exception_at, eta_start, eta_end, eta_assigned_at,
+	point_flag_reason, point_flagged_at, version`
 
 func scanJourneyRow(row pgx.Row) (journey.Snapshot, error) {
 	var (
 		s                                             journey.Snapshot
 		tier, state                                   string
 		lastScan, handed, delivered, closed, excepted *time.Time
+		etaStart, etaEnd, etaAssigned                 *time.Time
+		pointReason                                   *string
+		pointFlagged                                  *time.Time
 		node                                          *string
 	)
 	if err := row.Scan(&s.TrackingNumber, &s.LabelRef, &s.PONumber, &s.AssignmentID, &s.OrderID, &tier, &state, &s.StartedAt,
-		&lastScan, &node, &handed, &delivered, &closed, &excepted, &s.Version); err != nil {
+		&lastScan, &node, &handed, &delivered, &closed, &excepted, &etaStart, &etaEnd, &etaAssigned, &pointReason, &pointFlagged, &s.Version); err != nil {
 		return journey.Snapshot{}, err
 	}
 	s.Tier, s.State, s.LastNodeID = tierOf(tier), journey.State(state), deref(node)
 	s.StartedAt = s.StartedAt.UTC()
 	s.LastScanAt, s.HandedOverAt, s.DeliveredAt = orZero(lastScan), orZero(handed), orZero(delivered)
 	s.ClosedAt, s.LastExceptionAt = orZero(closed), orZero(excepted)
+	s.EtaStart, s.EtaEnd, s.EtaAssignedAt = orZero(etaStart), orZero(etaEnd), orZero(etaAssigned)
+	s.PointFlagReason, s.PointFlaggedAt = orString(pointReason), orZero(pointFlagged)
 	return s, nil
 }
 
@@ -97,10 +103,11 @@ func (r *JourneyRepo) Save(ctx context.Context, j *journey.Journey) error {
 }
 
 func insertJourney(ctx context.Context, q querier, s journey.Snapshot) error {
-	_, err := q.Exec(ctx, `INSERT INTO package_journeys (`+journeyColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+	_, err := q.Exec(ctx, `INSERT INTO package_journeys (`+journeyColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		string(s.TrackingNumber), s.LabelRef, s.PONumber, s.AssignmentID, s.OrderID, string(s.Tier), string(s.State), s.StartedAt.UTC(),
 		nullTime(s.LastScanAt), nullString(s.LastNodeID), nullTime(s.HandedOverAt), nullTime(s.DeliveredAt), nullTime(s.ClosedAt),
-		nullTime(s.LastExceptionAt), s.Version)
+		nullTime(s.LastExceptionAt), nullTime(s.EtaStart), nullTime(s.EtaEnd), nullTime(s.EtaAssignedAt),
+		nullString(s.PointFlagReason), nullTime(s.PointFlaggedAt), s.Version)
 	if _, ok := unique(err); ok {
 		return fmt.Errorf("%w: journey %s", ports.ErrConcurrentUpdate, s.TrackingNumber)
 	}
@@ -109,10 +116,13 @@ func insertJourney(ctx context.Context, q querier, s journey.Snapshot) error {
 
 func updateJourney(ctx context.Context, q querier, s journey.Snapshot) error {
 	tag, err := q.Exec(ctx, `UPDATE package_journeys SET state = $2, last_scan_at = $3, last_node_id = $4, handed_over_at = $5,
-		delivered_at = $6, closed_at = $7, last_exception_at = $8, version = $9
-		WHERE tracking_number = $1 AND version = $10`,
+		delivered_at = $6, closed_at = $7, last_exception_at = $8, eta_start = $9, eta_end = $10, eta_assigned_at = $11,
+		point_flag_reason = $12, point_flagged_at = $13,
+		version = $14
+		WHERE tracking_number = $1 AND version = $15`,
 		string(s.TrackingNumber), string(s.State), nullTime(s.LastScanAt), nullString(s.LastNodeID), nullTime(s.HandedOverAt),
-		nullTime(s.DeliveredAt), nullTime(s.ClosedAt), nullTime(s.LastExceptionAt), s.Version, s.Version-1)
+		nullTime(s.DeliveredAt), nullTime(s.ClosedAt), nullTime(s.LastExceptionAt), nullTime(s.EtaStart), nullTime(s.EtaEnd),
+		nullTime(s.EtaAssignedAt), nullString(s.PointFlagReason), nullTime(s.PointFlaggedAt), s.Version, s.Version-1)
 	if err != nil {
 		return err
 	}

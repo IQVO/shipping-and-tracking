@@ -30,6 +30,8 @@ const (
 	TypeLoadArrived             = "com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived"
 	TypePackageOutForDelivery   = "com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery"
 	TypeDeliveryAttempted       = "com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted"
+	TypeStopEtaWindowAssigned   = "com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned"
+	TypeDeliveryPointFlagged    = "com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged"
 	// The entity segment of PackageReturnInitiated is last-mile-delivery's
 	// choice (ADR 0003): the pushed AsyncAPI says packageattempthistory; the
 	// route spelling is a tolerated alias.
@@ -61,6 +63,16 @@ type ScanApplier interface {
 // Returner is the ReturnToSender use case.
 type Returner interface {
 	Execute(ctx context.Context, cmd usecases.ReturnCmd) (usecases.ReturnResult, error)
+}
+
+// EtaApplier is the ApplyEtaWindows use case (ADR 0013).
+type EtaApplier interface {
+	Execute(ctx context.Context, cmd usecases.ApplyEtaWindowsCmd) (usecases.EtaResult, error)
+}
+
+// PointFlagger is the RelayDeliveryPointFlag use case (ADR 0014).
+type PointFlagger interface {
+	Execute(ctx context.Context, cmd usecases.RelayDeliveryPointFlagCmd) (usecases.PointFlagResult, error)
 }
 
 // CatalogRecorder is the RecordCatalogItem use case.
@@ -190,95 +202,6 @@ func LinehaulHandlers(uc ScanApplier, logger *slog.Logger) map[string]HandlerFun
 	}
 }
 
-// --- last-mile-delivery ----------------------------------------------------
-
-type packageOutForDeliveryData struct {
-	TrackingNumber string    `json:"trackingNumber"`
-	StationNodeID  string    `json:"stationNodeId"`
-	At             time.Time `json:"at"`
-}
-
-type deliveryAttemptedData struct {
-	TrackingNumber string    `json:"trackingNumber"`
-	Outcome        string    `json:"outcome"`
-	At             time.Time `json:"at"`
-}
-
-type packageReturnInitiatedData struct {
-	TrackingNumber string    `json:"trackingNumber"`
-	At             time.Time `json:"at"`
-}
-
-// LastMileHandlers maps PackageOutForDelivery to OUT_FOR_DELIVERY,
-// DeliveryAttempted to DELIVERED or DELIVERY_FAILED (the scan takes the node of
-// the journey's last applied scan, A21) and PackageReturnInitiated to
-// ReturnToSender.
-func LastMileHandlers(scans ScanApplier, returner Returner, logger *slog.Logger) map[string]HandlerFunc {
-	logger = defaultLogger(logger)
-	returnHandler := func(ctx context.Context, e ce.Event) error {
-		d, err := decodeData[packageReturnInitiatedData](e)
-		if err != nil {
-			return err
-		}
-		if d.TrackingNumber == "" {
-			return fmt.Errorf("%w: trackingNumber is blank", errBadPayload)
-		}
-		when, err := at(d.At, e, "at")
-		if err != nil {
-			return err
-		}
-		res, err := returner.Execute(ctx, usecases.ReturnCmd{
-			Consumer: ConsumerLastMile, EventID: e.ID(), TrackingNumber: shared.TrackingNumber(d.TrackingNumber), ReturnedAt: when,
-		})
-		if err != nil {
-			return err
-		}
-		logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped,
-			"returned", res.Returned, "unknown", res.Unknown, "closed", res.Closed)
-		return nil
-	}
-	return map[string]HandlerFunc{
-		TypePackageOutForDelivery: func(ctx context.Context, e ce.Event) error {
-			d, err := decodeData[packageOutForDeliveryData](e)
-			if err != nil {
-				return err
-			}
-			when, err := at(d.At, e, "at")
-			if err != nil {
-				return err
-			}
-			return applyScans(ctx, logger, scans, ConsumerLastMile, e,
-				facts(nonBlank(d.TrackingNumber), d.StationNodeID, journey.ScanOutForDelivery, when, false))
-		},
-		TypeDeliveryAttempted: func(ctx context.Context, e ce.Event) error {
-			d, err := decodeData[deliveryAttemptedData](e)
-			if err != nil {
-				return err
-			}
-			when, err := at(d.At, e, "at")
-			if err != nil {
-				return err
-			}
-			typ := journey.ScanDeliveryFailed
-			if d.Outcome == outcomeDelivered {
-				typ = journey.ScanDelivered
-			}
-			return applyScans(ctx, logger, scans, ConsumerLastMile, e, facts(nonBlank(d.TrackingNumber), "", typ, when, false))
-		},
-		TypePackageReturnInitiated:        returnHandler,
-		TypePackageReturnInitiatedOnRoute: returnHandler,
-	}
-}
-
-// nonBlank returns the one-element list of tn, or nil for a blank value (an
-// event for no package is acknowledged, not applied).
-func nonBlank(tn string) []string {
-	if tn == "" {
-		return nil
-	}
-	return []string{tn}
-}
-
 // --- offer-availability ----------------------------------------------------
 
 type catalogItemCreatedData struct {
@@ -330,8 +253,8 @@ func NewLinehaulConsumer(brokers []string, groupID string, uc ScanApplier, logge
 
 // NewLastMileConsumer reads last-mile-delivery's topic under groupID
 // (LASTMILE_CONSUMER_GROUP).
-func NewLastMileConsumer(brokers []string, groupID string, scans ScanApplier, returner Returner, logger *slog.Logger) *Consumer {
-	return newConsumer("last-mile consumer", brokers, LastMileTopic, groupID, LastMileHandlers(scans, returner, logger), logger)
+func NewLastMileConsumer(brokers []string, groupID string, scans ScanApplier, returner Returner, etas EtaApplier, flagger PointFlagger, logger *slog.Logger) *Consumer {
+	return newConsumer("last-mile consumer", brokers, LastMileTopic, groupID, LastMileHandlers(scans, returner, etas, flagger, logger), logger)
 }
 
 // NewCatalogConsumer reads offer-availability's topic under groupID

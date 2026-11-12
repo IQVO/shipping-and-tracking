@@ -25,7 +25,8 @@ func Restore(s Snapshot) (*Journey, error) {
 		orderID: s.OrderID, tier: s.Tier, state: s.State, scans: scans, startedAt: shared.UTC(s.StartedAt),
 		lastScanAt: shared.UTC(s.LastScanAt), lastNodeID: s.LastNodeID, handedOverAt: shared.UTC(s.HandedOverAt),
 		deliveredAt: shared.UTC(s.DeliveredAt), closedAt: shared.UTC(s.ClosedAt),
-		lastExceptedAt: shared.UTC(s.LastExceptionAt), version: s.Version,
+		lastExceptedAt: shared.UTC(s.LastExceptionAt), etaStart: shared.UTC(s.EtaStart), etaEnd: shared.UTC(s.EtaEnd),
+		etaAssignedAt: shared.UTC(s.EtaAssignedAt), pointFlagReason: s.PointFlagReason, pointFlaggedAt: shared.UTC(s.PointFlaggedAt), version: s.Version,
 	}, nil
 }
 
@@ -46,7 +47,39 @@ func checkSnapshot(s Snapshot) error {
 	if err != nil {
 		return err
 	}
-	return checkClosing(s, end)
+	if err := checkClosing(s, end); err != nil {
+		return err
+	}
+	if err := checkEta(s); err != nil {
+		return err
+	}
+	return checkPointFlag(s)
+}
+
+// checkPointFlag: the two flag fields are both zero or both set, and the
+// reason is one of the two the producer publishes (ADR 0014).
+func checkPointFlag(s Snapshot) error {
+	if s.PointFlagReason == "" && s.PointFlaggedAt.IsZero() {
+		return nil
+	}
+	if s.PointFlagReason == "" || s.PointFlaggedAt.IsZero() {
+		return errors.New("pointFlagReason and pointFlaggedAt are both empty or both set")
+	}
+	if s.PointFlagReason != "NOT_HOME" && s.PointFlagReason != "ACCESS_PROBLEM" {
+		return fmt.Errorf("pointFlagReason %q is not NOT_HOME or ACCESS_PROBLEM", s.PointFlagReason)
+	}
+	return nil
+}
+
+// checkEta: the three ETA fields are all zero or all set with start < end.
+func checkEta(s Snapshot) error {
+	if s.EtaStart.IsZero() && s.EtaEnd.IsZero() && s.EtaAssignedAt.IsZero() {
+		return nil
+	}
+	if s.EtaStart.IsZero() || s.EtaEnd.IsZero() || s.EtaAssignedAt.IsZero() || !s.EtaStart.Before(s.EtaEnd) {
+		return errors.New("etaStart, etaEnd and etaAssignedAt are all zero or all set with etaStart before etaEnd")
+	}
+	return nil
 }
 
 func checkScans(scans []Scan) error {

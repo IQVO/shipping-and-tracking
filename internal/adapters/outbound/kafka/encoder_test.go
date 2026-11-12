@@ -97,6 +97,23 @@ func goldenCases() []goldenCase {
 			"journey", "RN0123456789ABCDEF",
 			`{"trackingNumber":"RN0123456789ABCDEF","orderId":"ord-001","declaredAt":"2026-10-27T13:00:00Z"}`,
 		},
+		{
+			"PackageEtaWindowAssigned",
+			journey.PackageEtaWindowAssigned{Header: hdr(6), TrackingNumber: "RN0123456789ABCDEF", AssignmentID: "asg-001", OrderID: "ord-001",
+				EtaStart: time.Date(2026, 10, 24, 13, 0, 0, 0, time.UTC), EtaEnd: time.Date(2026, 10, 24, 15, 0, 0, 0, time.UTC),
+				AssignedAt: time.Date(2026, 10, 24, 9, 30, 0, 0, time.UTC)},
+			"journey", "RN0123456789ABCDEF",
+			`{"trackingNumber":"RN0123456789ABCDEF","assignmentId":"asg-001","orderId":"ord-001","etaStart":"2026-10-24T13:00:00Z",` +
+				`"etaEnd":"2026-10-24T15:00:00Z","assignedAt":"2026-10-24T09:30:00Z"}`,
+		},
+		{
+			"PackageDeliveryPointFlagged",
+			journey.PackageDeliveryPointFlagged{Header: hdr(7), TrackingNumber: "RN0123456789ABCDEF", AssignmentID: "asg-001", OrderID: "ord-001",
+				Reason: "NOT_HOME", FlaggedAt: time.Date(2026, 10, 24, 16, 30, 0, 0, time.UTC)},
+			"journey", "RN0123456789ABCDEF",
+			`{"trackingNumber":"RN0123456789ABCDEF","assignmentId":"asg-001","orderId":"ord-001","reason":"NOT_HOME",` +
+				`"flaggedAt":"2026-10-24T16:30:00Z"}`,
+		},
 	}
 }
 

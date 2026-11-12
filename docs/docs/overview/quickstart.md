@@ -44,7 +44,7 @@ docker run -d --name stt-pg -p 5432:5432 \
   postgres:17
 ```
 
-The service applies its embedded migration (`internal/adapters/outbound/postgres/migrations/0001_schema.up.sql`) at boot, so the database starts empty.
+The service applies its embedded migrations (`internal/adapters/outbound/postgres/migrations/`, `0001_schema` and `0002_idempotency_key_global`) at boot, so the database starts empty.
 
 ## 2. Kafka
 
