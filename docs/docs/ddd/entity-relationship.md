@@ -7,7 +7,7 @@ description: "The Postgres schemas of Shipping & Tracking as migrated: the OLTP 
 
 # Entity relationship
 
-This context has two Postgres databases, each with its own embedded migrations. The OLTP database holds eight tables, created by `internal/adapters/outbound/postgres/migrations/0001_schema.up.sql` and amended by `0002_idempotency_key_global.up.sql`, and is applied at boot by `cmd/api`, `cmd/mcp` and `cmd/a2a`. The analytical database holds four tables, created by `analytics/migrations/0001_delivery_facts.up.sql` and applied by `cmd/st-projector` (ADR 0012). No other context reads either. A relationship line is drawn only for a `FOREIGN KEY` in a migration; the first diagrams below are the OLTP database, the last section is the analytical one.
+This context has two Postgres databases, each with its own embedded migrations. The OLTP database holds eight tables, created by `internal/adapters/outbound/postgres/migrations/0001_schema.up.sql` and amended by `0002_idempotency_key_global.up.sql` and `0003_journey_eta.up.sql`, and is applied at boot by `cmd/api`, `cmd/mcp` and `cmd/a2a`. The analytical database holds four tables, created by `analytics/migrations/0001_delivery_facts.up.sql` and applied by `cmd/st-projector` (ADR 0012). No other context reads either. A relationship line is drawn only for a `FOREIGN KEY` in a migration; the first diagrams below are the OLTP database, the last section is the analytical one.
 
 ## Aggregate and read-model tables
 
@@ -65,6 +65,9 @@ erDiagram
         TIMESTAMPTZ delivered_at "nullable"
         TIMESTAMPTZ closed_at "nullable"
         TIMESTAMPTZ last_exception_at "nullable"
+        TIMESTAMPTZ eta_start "nullable, 0003"
+        TIMESTAMPTZ eta_end "nullable, 0003"
+        TIMESTAMPTZ eta_assigned_at "nullable, 0003"
         BIGINT version
     }
     journey_scans {
@@ -78,7 +81,7 @@ erDiagram
     }
 ```
 
-Source: same migration, `internal/adapters/outbound/postgres/journeys.go`. `journey_scans` rows are append-only; `seq` is the recorded order, `(tracking_number, scan_id)` is unique and enforces `ErrDuplicateScan`, `applied = false` keeps a late scan. `version` is the optimistic-concurrency check. `last_exception_at` stops the sweep raising the same silence twice. Two partial indexes: `idx_package_journeys_stale (last_scan_at, tracking_number)` for open states past `LABELLED` (the silence sweep) and `idx_package_journeys_closed (closed_at)` for closed journeys (the ship-to purge). `journey_scans` rows are deleted with their journey (`ON DELETE CASCADE`), though no code path deletes a journey.
+Source: same migration, `internal/adapters/outbound/postgres/journeys.go`. `journey_scans` rows are append-only; `seq` is the recorded order, `(tracking_number, scan_id)` is unique and enforces `ErrDuplicateScan`, `applied = false` keeps a late scan. `version` is the optimistic-concurrency check. `last_exception_at` stops the sweep raising the same silence twice. `eta_start`, `eta_end` and `eta_assigned_at` (migration `0003_journey_eta`, ADR 0013) hold the day-of ETA window: all three are null or all set with `eta_start < eta_end` (`package_journeys_eta_check`). Two partial indexes: `idx_package_journeys_stale (last_scan_at, tracking_number)` for open states past `LABELLED` (the silence sweep) and `idx_package_journeys_closed (closed_at)` for closed journeys (the ship-to purge). `journey_scans` rows are deleted with their journey (`ON DELETE CASCADE`), though no code path deletes a journey.
 
 ### Catalog dimensions
 

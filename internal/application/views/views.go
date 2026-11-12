@@ -61,7 +61,11 @@ type Journey struct {
 	Tier           string     `json:"tier"`
 	HandedOverAt   *time.Time `json:"handedOverAt,omitempty"`
 	DeliveredAt    *time.Time `json:"deliveredAt,omitempty"`
-	Scans          []Scan     `json:"scans"`
+	// EtaStart and EtaEnd are the day-of ETA window (ADR 0013), present only while
+	// the journey is OUT_FOR_DELIVERY and the window is not older than the last scan.
+	EtaStart *time.Time `json:"etaStart,omitempty"`
+	EtaEnd   *time.Time `json:"etaEnd,omitempty"`
+	Scans    []Scan     `json:"scans"`
 }
 
 // JourneyFrom copies a journey into its view. Scans is never nil.
@@ -79,6 +83,10 @@ func JourneyFrom(j *journey.Journey) Journey {
 	}
 	if t := j.DeliveredAt(); !t.IsZero() {
 		v.DeliveredAt = &t
+	}
+	if j.EtaCurrent() {
+		start, end := j.EtaStart(), j.EtaEnd()
+		v.EtaStart, v.EtaEnd = &start, &end
 	}
 	return v
 }

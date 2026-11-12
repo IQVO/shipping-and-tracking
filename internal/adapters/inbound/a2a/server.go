@@ -90,7 +90,7 @@ func Card(cfg Config) *a2a.AgentCard {
 				Description: "Read the customer-visible journey of one package by its trackingNumber: the state " +
 					"(LABELLED, HANDED_OVER, IN_TRANSIT, AT_STATION, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST " +
 					"or VOIDED), the poNumber, assignmentId, orderId and tier of its label, handedOverAt and " +
-					"deliveredAt when they happened, and every stored scan in the order they were recorded, each " +
+					"deliveredAt when they happened, the day-of ETA window (etaStart, etaEnd) while the package is out for delivery, and every stored scan in the order they were recorded, each " +
 					"with its scanType, nodeId, when, and applied (false for a scan stored out of order or without " +
 					"an edge from the state it met). Answers a 404 problem when no journey has that tracking " +
 					"number. Persists nothing.",

@@ -46,6 +46,7 @@ const (
 	typeLoadIn = "com.retailnetwork.logistics.linehaul-transportation.load.LoadArrived"
 	typeOutFor = "com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery"
 	typeTried  = "com.retailnetwork.logistics.last-mile-delivery.route.DeliveryAttempted"
+	typeEta    = "com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned"
 	typeItem   = "com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated"
 
 	containerStartTimeout = 120 * time.Second
@@ -385,7 +386,18 @@ func TestEndToEnd_RealPostgresAndKafka(t *testing.T) {
 		inputEvent(t, "ev-in", typeLoadIn, fmt.Sprintf(`{"destinationNodeId":"ds-1","trackingNumbers":[%q],"arrivedAt":%q,"nodeType":"DELIVERY_STATION"}`, tn, at)))
 	waitFor(t, 60*time.Second, "AT_STATION", func() bool { return journeyState(svc, tn) == "AT_STATION" })
 	produce(t, brokers, topicLastMile,
-		inputEvent(t, "ev-out", typeOutFor, fmt.Sprintf(`{"trackingNumber":%q,"stationNodeId":"ds-1","at":%q}`, tn, at)),
+		inputEvent(t, "ev-out", typeOutFor, fmt.Sprintf(`{"trackingNumber":%q,"stationNodeId":"ds-1","at":%q}`, tn, at)))
+	waitFor(t, 60*time.Second, "OUT_FOR_DELIVERY", func() bool { return journeyState(svc, tn) == "OUT_FOR_DELIVERY" })
+	// The day-of ETA window of the stop (ADR 0013): shown while out for delivery, and
+	// the redelivery of the same event and the unknown tracking number change nothing.
+	etaEvent := inputEvent(t, "ev-eta", typeEta, fmt.Sprintf(
+		`{"routeId":"route-1","stopNo":1,"stopKey":"pkg:%s","trackingNumbers":[%q,"RN-UNKNOWN"],"etaStart":"2030-01-01T13:00:00Z","etaEnd":"2030-01-01T15:00:00Z"}`, tn, tn))
+	produce(t, brokers, topicLastMile, etaEvent, etaEvent)
+	waitFor(t, 60*time.Second, "the ETA window on the journey", func() bool {
+		_, raw := svc.try(http.MethodGet, "/journeys/"+tn, "", "")
+		return field(t, raw, "etaStart") == "2030-01-01T13:00:00Z" && field(t, raw, "etaEnd") == "2030-01-01T15:00:00Z"
+	})
+	produce(t, brokers, topicLastMile,
 		inputEvent(t, "ev-done", typeTried, fmt.Sprintf(`{"trackingNumber":%q,"outcome":"DELIVERED","at":%q}`, tn, at)))
 	waitFor(t, 60*time.Second, "DELIVERED", func() bool { return journeyState(svc, tn) == "DELIVERED" })
 	svc.call(http.MethodPost, "/journeys/"+tn+"/scans",
@@ -408,7 +420,7 @@ func TestEndToEnd_RealPostgresAndKafka(t *testing.T) {
 	for _, ty := range types {
 		count[ty]++
 	}
-	for _, want := range []string{"label.LabelIssued", "journey.PackageHandedOver", "journey.PackageDelivered"} {
+	for _, want := range []string{"label.LabelIssued", "journey.PackageHandedOver", "journey.PackageDelivered", "journey.PackageEtaWindowAssigned"} {
 		if count[want] != 1 {
 			t.Errorf("%s published %d times in %v, want exactly once", want, count[want], types)
 		}

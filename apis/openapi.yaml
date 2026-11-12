@@ -504,6 +504,14 @@ components:
         deliveredAt:
           type: string
           format: date-time
+        etaStart:
+          type: string
+          format: date-time
+          description: Start of the day-of ETA window (ADR 0013). Present, with etaEnd, only while the state is OUT_FOR_DELIVERY and the window is not older than the last applied scan; omitted otherwise. The window is shown as received and is never clipped to the promised delivery window.
+        etaEnd:
+          type: string
+          format: date-time
+          description: End of the day-of ETA window. Present exactly when etaStart is.
         scans:
           type: array
           items:

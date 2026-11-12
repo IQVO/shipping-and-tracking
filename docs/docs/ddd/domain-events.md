@@ -40,6 +40,7 @@ Every event leaves through the transactional outbox, in the same transaction as 
 | `PackageExceptionRaised` | `...journey.PackageExceptionRaised` | `trackingNumber` | `SweepSilence` (`RaiseException`) | delivery-promise, customer-ordering |
 | `PackageReturned` | `...journey.PackageReturned` | `trackingNumber` | `ReturnToSender` | delivery-promise |
 | `PackageLost` | `...journey.PackageLost` | `trackingNumber` | `SweepSilence` (`DeclareLost`) | delivery-promise |
+| `PackageEtaWindowAssigned` | `...journey.PackageEtaWindowAssigned` | `trackingNumber` | `ApplyEtaWindows` (`AssignEta`) | customer-ordering (tracking view) |
 
 The consumer column comes from the AsyncAPI descriptions; this repository does not verify that each consumer is deployed. In the table `...` abbreviates `com.retailnetwork.logistics.shipping-and-tracking`.
 
@@ -125,6 +126,19 @@ Source: `internal/domain/journey/events.go`, `packageScannedData`.
 | `orderId` | string | The customer order |
 | `declaredAt` | timestamp | When the sweep declared the package lost |
 
+### PackageEtaWindowAssigned
+
+Source: `internal/domain/journey/journey_eta.go`, `packageEtaWindowAssignedData` (ADR 0013). Not a scan: the state does not change.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `trackingNumber` | string | The package |
+| `assignmentId` | string | The assignment |
+| `orderId` | string | The customer order |
+| `etaStart` | timestamp | Start of the day-of ETA window, as last-mile-delivery stated it |
+| `etaEnd` | timestamp | End of the window, after `etaStart` |
+| `assignedAt` | timestamp | The route start instant: the CloudEvents `time` of the consumed `StopEtaWindowAssigned`. A window is current only while the journey is `OUT_FOR_DELIVERY` and `assignedAt` is not before the last applied scan |
+
 ### Example envelope: PackageDelivered
 
 `PackageDelivered` closes the journey and is what delivery-promise and order-sourcing react to. The values are synthetic.
@@ -160,6 +174,7 @@ Source: `internal/adapters/inbound/kafka/handlers.go`. Consumers dispatch on the
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.route.PackageOutForDelivery` | `retailnetwork.last-mile-delivery.events` | `trackingNumber`, `stationNodeId`, `at` | `OUT_FOR_DELIVERY` scan at `stationNodeId` |
 | last-mile-delivery | `...route.DeliveryAttempted` | same topic | `trackingNumber`, `outcome`, `at` | Outcome `DELIVERED` gives a `DELIVERED` scan, any other outcome `DELIVERY_FAILED`. The event has no node id: the scan takes the node of the journey's last applied scan |
 | last-mile-delivery | `...packageattempthistory.PackageReturnInitiated` (the `route` spelling is accepted) | same topic | `trackingNumber`, `at` | `ReturnToSender`: `AT_STATION` to `RETURNED`, raising `PackageReturned` |
+| last-mile-delivery | `...route.StopEtaWindowAssigned` | same topic | `trackingNumbers`, `etaStart`, `etaEnd`; the CloudEvents `time` is the `assignedAt` | `ApplyEtaWindows`: `AssignEta` on every package of the stop, raising `PackageEtaWindowAssigned`. A stale window, a closed journey and an unknown tracking number are counted and acknowledged; `stopNo`, `stopKey` and `routeId` are not kept |
 | offer-availability | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `retailnetwork.offer-availability.events` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | Upsert of `catalog_dimensions` |
 
 ### Idempotency

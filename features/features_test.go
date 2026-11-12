@@ -479,4 +479,5 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the sweep raised (\d+) exceptions and declared (\d+) packages lost$`, w.sweepResult)
 
 	registerOpenHostSteps(sc, w)
+	registerEtaSteps(sc, w)
 }

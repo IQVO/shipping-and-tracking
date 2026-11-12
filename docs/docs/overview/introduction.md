@@ -45,7 +45,7 @@ Domain-driven design study: no real company, brand or dataset; names and figures
 | Read a package's timeline | REST `GET /journeys/{trackingNumber}`, MCP and A2A `get_journey`, the console remote | [API overview](/docs/api-reference), [MCP tools](/docs/mcp/tools) |
 | Record a scan | Kafka consumers of four topics, and REST `POST /journeys/{trackingNumber}/scans` | [Event catalogue](/docs/api-reference/events) |
 | Raise `NO_SCAN` exceptions and declare lost packages | periodic `silence-sweep` job | [Runbook](/docs/operations/runbook) |
-| Publish eight integration events | Kafka via a transactional outbox | [Event catalogue](/docs/api-reference/events) |
+| Publish nine integration events | Kafka via a transactional outbox | [Event catalogue](/docs/api-reference/events) |
 
 ## Where to go next
 

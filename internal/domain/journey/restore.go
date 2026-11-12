@@ -25,7 +25,8 @@ func Restore(s Snapshot) (*Journey, error) {
 		orderID: s.OrderID, tier: s.Tier, state: s.State, scans: scans, startedAt: shared.UTC(s.StartedAt),
 		lastScanAt: shared.UTC(s.LastScanAt), lastNodeID: s.LastNodeID, handedOverAt: shared.UTC(s.HandedOverAt),
 		deliveredAt: shared.UTC(s.DeliveredAt), closedAt: shared.UTC(s.ClosedAt),
-		lastExceptedAt: shared.UTC(s.LastExceptionAt), version: s.Version,
+		lastExceptedAt: shared.UTC(s.LastExceptionAt), etaStart: shared.UTC(s.EtaStart), etaEnd: shared.UTC(s.EtaEnd),
+		etaAssignedAt: shared.UTC(s.EtaAssignedAt), version: s.Version,
 	}, nil
 }
 
@@ -46,7 +47,21 @@ func checkSnapshot(s Snapshot) error {
 	if err != nil {
 		return err
 	}
-	return checkClosing(s, end)
+	if err := checkClosing(s, end); err != nil {
+		return err
+	}
+	return checkEta(s)
+}
+
+// checkEta: the three ETA fields are all zero or all set with start < end.
+func checkEta(s Snapshot) error {
+	if s.EtaStart.IsZero() && s.EtaEnd.IsZero() && s.EtaAssignedAt.IsZero() {
+		return nil
+	}
+	if s.EtaStart.IsZero() || s.EtaEnd.IsZero() || s.EtaAssignedAt.IsZero() || !s.EtaStart.Before(s.EtaEnd) {
+		return errors.New("etaStart, etaEnd and etaAssignedAt are all zero or all set with etaStart before etaEnd")
+	}
+	return nil
 }
 
 func checkScans(scans []Scan) error {

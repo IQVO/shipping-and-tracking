@@ -213,8 +213,8 @@ Source: `internal/application/usecases/sweep.go` (`SweepSilence`, `decide`), `in
 | `IssueLabel`, `VoidLabel` | Command | `usecases/labels.go` |
 | Start journey, `RecordScan`, `RaiseException`, `ReturnToSender`, `DeclareLost` | Command | `journey/journey.go`, `usecases/scans.go`, `usecases/sweep.go` |
 | `ShippingLabel`, `PackageJourney` | Aggregate | `domain/label`, `domain/journey` |
-| `LabelIssued`, `LabelVoided`, `PackageScanned`, `PackageHandedOver`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost` | Domain event (own) | `label/events.go`, `journey/events.go` |
-| `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted`, `PackageReturnInitiated` | Domain event (neighbour) | `inbound/kafka/handlers.go` |
+| `LabelIssued`, `LabelVoided`, `PackageScanned`, `PackageHandedOver`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost`, `PackageEtaWindowAssigned` | Domain event (own) | `label/events.go`, `journey/events.go` |
+| `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted`, `PackageReturnInitiated`, `StopEtaWindowAssigned` | Domain event (neighbour) | `inbound/kafka/handlers.go` |
 | Handover on first pickup departure, exception on silence, lost after 48 hours | Policy | `journey.apply`, `journey.SilenceWindow`, `Journey.Lost` |
 | `catalog_dimensions` | Read model | `ports.CatalogDimensionsView` |
 | `vendor-connectivity`, `customer-ordering`, `linehaul-transportation`, `last-mile-delivery`, `delivery-promise`, `order-sourcing`, `node-performance` | External system | `apis/asyncapi.yaml`, `outbound/customerordering` |

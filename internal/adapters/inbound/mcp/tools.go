@@ -46,6 +46,8 @@ type journeyView struct {
 	Tier           string     `json:"tier"`
 	HandedOverAt   string     `json:"handedOverAt,omitempty"`
 	DeliveredAt    string     `json:"deliveredAt,omitempty"`
+	EtaStart       string     `json:"etaStart,omitempty"`
+	EtaEnd         string     `json:"etaEnd,omitempty"`
 	Scans          []scanView `json:"scans"`
 }
 
@@ -77,6 +79,9 @@ func toJourney(v views.Journey) journeyView {
 	if v.DeliveredAt != nil {
 		out.DeliveredAt = instant(*v.DeliveredAt)
 	}
+	if v.EtaStart != nil && v.EtaEnd != nil {
+		out.EtaStart, out.EtaEnd = instant(*v.EtaStart), instant(*v.EtaEnd)
+	}
 	return out
 }
 
@@ -104,7 +109,7 @@ func (d Deps) registerTools(server *mcp.Server) {
 		Description: "Read the customer-visible journey of one package by tracking number: the state (LABELLED, " +
 			"HANDED_OVER, IN_TRANSIT, AT_STATION, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST or VOIDED), the " +
 			"poNumber, assignmentId, orderId and tier of its label, handedOverAt and deliveredAt when they " +
-			"happened, and every stored scan in the order they were recorded -- each with its scanType, the " +
+			"happened, the day-of ETA window (etaStart, etaEnd) while the package is out for delivery, and every stored scan in the order they were recorded -- each with its scanType, the " +
 			"node it was seen at, when, and applied (false for a scan stored out of order or without an edge " +
 			"from the state it met). Read-only; an unknown tracking number fails with not-found.",
 		Annotations: readOnly,
