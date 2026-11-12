@@ -43,25 +43,27 @@ type Scan struct {
 
 // Journey is the aggregate root.
 type Journey struct {
-	tracking       TrackingNumber
-	labelRef       string
-	poNumber       string
-	assignmentID   string
-	orderID        string
-	tier           shared.Tier
-	state          State
-	scans          []Scan
-	startedAt      time.Time
-	lastScanAt     time.Time
-	lastNodeID     string
-	handedOverAt   time.Time
-	deliveredAt    time.Time
-	closedAt       time.Time
-	lastExceptedAt time.Time
-	etaStart       time.Time
-	etaEnd         time.Time
-	etaAssignedAt  time.Time
-	version        int64
+	tracking        TrackingNumber
+	labelRef        string
+	poNumber        string
+	assignmentID    string
+	orderID         string
+	tier            shared.Tier
+	state           State
+	scans           []Scan
+	startedAt       time.Time
+	lastScanAt      time.Time
+	lastNodeID      string
+	handedOverAt    time.Time
+	deliveredAt     time.Time
+	closedAt        time.Time
+	lastExceptedAt  time.Time
+	etaStart        time.Time
+	etaEnd          time.Time
+	etaAssignedAt   time.Time
+	pointFlagReason string
+	pointFlaggedAt  time.Time
+	version         int64
 }
 
 // Snapshot is the persisted form of a journey. Restore validates it.
@@ -84,6 +86,8 @@ type Snapshot struct {
 	EtaStart        time.Time
 	EtaEnd          time.Time
 	EtaAssignedAt   time.Time
+	PointFlagReason string
+	PointFlaggedAt  time.Time
 	Version         int64
 }
 

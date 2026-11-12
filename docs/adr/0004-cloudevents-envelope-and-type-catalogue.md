@@ -41,7 +41,7 @@ type shipping-and-tracking publishes, followed by the types it consumes.
 Every type below goes to the topic `retailnetwork.shipping-and-tracking.events`.
 `LabelVoided`, `PackageReturned` and `PackageLost` were analytics-only in the
 model; contracts-delta E6 and E16 promote them to integration events, so nothing
-is written to `retailnetwork.shipping-and-tracking.analytics`. `PackageEtaWindowAssigned` (ADR 0013) is an integration event too.
+is written to `retailnetwork.shipping-and-tracking.analytics`. `PackageEtaWindowAssigned` (ADR 0013) and `PackageDeliveryPointFlagged` (ADR 0014) are integration events too.
 
 ```text
 type: com.retailnetwork.logistics.shipping-and-tracking.label.LabelIssued stream: events
@@ -53,6 +53,7 @@ type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageException
 type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageReturned stream: events
 type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageLost stream: events
 type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageEtaWindowAssigned stream: events
+type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDeliveryPointFlagged stream: events
 ```
 
 ### Consumed types

@@ -41,6 +41,64 @@ type stopEtaWindowAssignedData struct {
 	EtaEnd          time.Time `json:"etaEnd"`
 }
 
+// deliveryPointFlaggedData is the tolerant local copy of last-mile-delivery's
+// DeliveryPointFlagged (ADR 0014). stopKey and failures are not used: the stop
+// key is an opaque stop identifier this context does not keep.
+type deliveryPointFlaggedData struct {
+	TrackingNumbers []string  `json:"trackingNumbers"`
+	Reason          string    `json:"reason"`
+	FlaggedAt       time.Time `json:"flaggedAt"`
+}
+
+// pointFlagTrackingNumbers validates the payload: a stop has at least one
+// package, none of them blank, and the reason is one of the two the producer
+// publishes.
+func pointFlagTrackingNumbers(d deliveryPointFlaggedData) ([]shared.TrackingNumber, error) {
+	if len(d.TrackingNumbers) == 0 {
+		return nil, fmt.Errorf("%w: trackingNumbers is empty", errBadPayload)
+	}
+	if d.Reason != "NOT_HOME" && d.Reason != "ACCESS_PROBLEM" {
+		return nil, fmt.Errorf("%w: reason must be NOT_HOME or ACCESS_PROBLEM", errBadPayload)
+	}
+	out := make([]shared.TrackingNumber, len(d.TrackingNumbers))
+	for i, tn := range d.TrackingNumbers {
+		if tn == "" {
+			return nil, fmt.Errorf("%w: trackingNumbers holds a blank value", errBadPayload)
+		}
+		out[i] = shared.TrackingNumber(tn)
+	}
+	return out, nil
+}
+
+// flagHandler maps DeliveryPointFlagged to the delivery-point flag of every
+// package of the stop.
+func flagHandler(flagger PointFlagger, logger *slog.Logger) HandlerFunc {
+	return func(ctx context.Context, e ce.Event) error {
+		d, err := decodeData[deliveryPointFlaggedData](e)
+		if err != nil {
+			return err
+		}
+		tns, err := pointFlagTrackingNumbers(d)
+		if err != nil {
+			return err
+		}
+		when, err := at(d.FlaggedAt, e, "flaggedAt")
+		if err != nil {
+			return err
+		}
+		res, err := flagger.Execute(ctx, usecases.RelayDeliveryPointFlagCmd{
+			Consumer: ConsumerLastMile, EventID: e.ID(), TrackingNumbers: tns,
+			Reason: d.Reason, FlaggedAt: when,
+		})
+		if err != nil {
+			return err
+		}
+		logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped, "applied", res.Applied,
+			"stale", res.Stale, "closed", res.Closed, "unknown", res.Unknown)
+		return nil
+	}
+}
+
 // etaHandler maps StopEtaWindowAssigned to the day-of ETA window of every
 // package of the stop. assignedAt is the CloudEvents time: the route start.
 func etaHandler(etas EtaApplier, logger *slog.Logger) HandlerFunc {
@@ -93,7 +151,7 @@ func etaTrackingNumbers(d stopEtaWindowAssignedData) ([]shared.TrackingNumber, e
 // DeliveryAttempted to DELIVERED or DELIVERY_FAILED (the scan takes the node of
 // the journey's last applied scan, A21), PackageReturnInitiated to
 // ReturnToSender and StopEtaWindowAssigned to the day-of ETA window.
-func LastMileHandlers(scans ScanApplier, returner Returner, etas EtaApplier, logger *slog.Logger) map[string]HandlerFunc {
+func LastMileHandlers(scans ScanApplier, returner Returner, etas EtaApplier, flagger PointFlagger, logger *slog.Logger) map[string]HandlerFunc {
 	logger = defaultLogger(logger)
 	returnHandler := func(ctx context.Context, e ce.Event) error {
 		d, err := decodeData[packageReturnInitiatedData](e)
@@ -146,6 +204,7 @@ func LastMileHandlers(scans ScanApplier, returner Returner, etas EtaApplier, log
 			return applyScans(ctx, logger, scans, ConsumerLastMile, e, facts(nonBlank(d.TrackingNumber), "", typ, when, false))
 		},
 		TypeStopEtaWindowAssigned:         etaHandler(etas, logger),
+		TypeDeliveryPointFlagged:          flagHandler(flagger, logger),
 		TypePackageReturnInitiated:        returnHandler,
 		TypePackageReturnInitiatedOnRoute: returnHandler,
 	}

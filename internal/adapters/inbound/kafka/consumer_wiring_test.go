@@ -42,10 +42,10 @@ func TestConsumerConstructorsWireTopicHandlersAndDLQ(t *testing.T) {
 			consumerName: "last-mile consumer",
 			topic:        inbound.LastMileTopic,
 			build: func() *inbound.Consumer {
-				return inbound.NewLastMileConsumer([]string{"b1:9092"}, "lastmile-group", &fakeScans{}, &fakeReturner{}, &fakeEtas{}, quiet)
+				return inbound.NewLastMileConsumer([]string{"b1:9092"}, "lastmile-group", &fakeScans{}, &fakeReturner{}, &fakeEtas{}, &fakeFlagger{}, quiet)
 			},
 			types: []string{inbound.TypePackageOutForDelivery, inbound.TypeDeliveryAttempted,
-				inbound.TypePackageReturnInitiated, inbound.TypePackageReturnInitiatedOnRoute, inbound.TypeStopEtaWindowAssigned},
+				inbound.TypePackageReturnInitiated, inbound.TypePackageReturnInitiatedOnRoute, inbound.TypeStopEtaWindowAssigned, inbound.TypeDeliveryPointFlagged},
 		},
 		{
 			name:         "catalog",
