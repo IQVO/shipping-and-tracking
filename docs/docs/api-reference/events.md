@@ -41,6 +41,7 @@ Delivery is at-least-once through the transactional outbox: the aggregate rows a
 | `journey.PackageReturned` | `AT_STATION` to `RETURNED` | `trackingNumber`, `orderId`, `returnedAt` | delivery-promise |
 | `journey.PackageLost` | `IN_TRANSIT` to `LOST` | `trackingNumber`, `orderId`, `declaredAt` | delivery-promise |
 | `journey.PackageEtaWindowAssigned` | `ApplyEtaWindows`, one per package of the stop | `trackingNumber`, `assignmentId`, `orderId`, `etaStart`, `etaEnd`, `assignedAt` | customer-ordering (tracking view) |
+| `journey.PackageDeliveryPointFlagged` | `RelayDeliveryPointFlag`, one per package of the stop | `trackingNumber`, `assignmentId`, `orderId`, `reason`, `flaggedAt` | customer-ordering (tracking view advisory) |
 
 A handover or delivery raises two events in one transaction: `PackageScanned` and the milestone event. A scan stored out of order or without an edge raises nothing. `PackageEtaWindowAssigned` is not a scan: it carries the day-of ETA window of the package's stop and never changes the state (ADR 0013). No event carries a ship-to address; `stopKey` is the HMAC-SHA-256 (64 lower-case hex characters) of the normalised address and `destinationPostalPrefix` its first five letters or digits.
 

@@ -197,7 +197,7 @@ func startConsumers(d usecases.Deps, cfg config, logger *slog.Logger) ([]*worker
 	consumers := []*inboundkafka.Consumer{
 		inboundkafka.NewVendorConsumer(cfg.brokers, cfg.groups[envVendorGroup], applyScans, logger),
 		inboundkafka.NewLinehaulConsumer(cfg.brokers, cfg.groups[envLinehaulGroup], applyScans, logger),
-		inboundkafka.NewLastMileConsumer(cfg.brokers, cfg.groups[envLastMileGroup], applyScans, usecases.NewReturnToSender(d), usecases.NewApplyEtaWindows(d), logger),
+		inboundkafka.NewLastMileConsumer(cfg.brokers, cfg.groups[envLastMileGroup], applyScans, usecases.NewReturnToSender(d), usecases.NewApplyEtaWindows(d), usecases.NewRelayDeliveryPointFlag(d), logger),
 		inboundkafka.NewCatalogConsumer(cfg.brokers, cfg.groups[envCatalogGroup], usecases.NewRecordCatalogItem(d), logger),
 	}
 	ctx, stop := context.WithCancel(context.Background())

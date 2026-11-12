@@ -145,7 +145,7 @@ func TestEveryConsumedTypeBecomesTheDocumentedFacts(t *testing.T) {
 func allScanHandlers(scans *fakeScans) map[string]inbound.HandlerFunc {
 	handlers := map[string]inbound.HandlerFunc{}
 	for _, m := range []map[string]inbound.HandlerFunc{
-		inbound.VendorHandlers(scans, quiet), inbound.LinehaulHandlers(scans, quiet), inbound.LastMileHandlers(scans, &fakeReturner{}, &fakeEtas{}, quiet),
+		inbound.VendorHandlers(scans, quiet), inbound.LinehaulHandlers(scans, quiet), inbound.LastMileHandlers(scans, &fakeReturner{}, &fakeEtas{}, &fakeFlagger{}, quiet),
 	} {
 		for k, v := range m {
 			handlers[k] = v
@@ -176,7 +176,7 @@ func checkFacts(t *testing.T, typ, data, consumer string, tracking []string, wan
 func TestReturnInitiatedOnEitherEntitySegment(t *testing.T) {
 	for _, typ := range []string{inbound.TypePackageReturnInitiated, inbound.TypePackageReturnInitiatedOnRoute} {
 		r := &fakeReturner{}
-		c := consumerOf(inbound.LastMileHandlers(&fakeScans{}, r, &fakeEtas{}, quiet), true)
+		c := consumerOf(inbound.LastMileHandlers(&fakeScans{}, r, &fakeEtas{}, &fakeFlagger{}, quiet), true)
 		if err := c.HandleMessage(context.Background(), envelope(t, "ev-r", typ, `{"trackingNumber":"RN1","at":"2026-10-23T09:00:00Z"}`)); err != nil {
 			t.Fatal(err)
 		}
@@ -254,12 +254,12 @@ func TestPoisonMessagesAreDeadLetteredAndTransientOnesAreRetried(t *testing.T) {
 	}
 	notYet := fmt.Errorf("%w: not at the station", shared.ErrIllegalTransition)
 	r := &fakeReturner{err: notYet}
-	err := consumerOf(inbound.LastMileHandlers(&fakeScans{}, r, &fakeEtas{}, quiet), true).HandleMessage(context.Background(),
+	err := consumerOf(inbound.LastMileHandlers(&fakeScans{}, r, &fakeEtas{}, &fakeFlagger{}, quiet), true).HandleMessage(context.Background(),
 		envelope(t, "e", inbound.TypePackageReturnInitiated, `{"trackingNumber":"RN1"}`))
 	if !errors.Is(err, notYet) {
 		t.Errorf("a return before the station is retried, got %v", err)
 	}
-	if err := consumerOf(inbound.LastMileHandlers(&fakeScans{}, &fakeReturner{}, &fakeEtas{}, quiet), true).HandleMessage(context.Background(),
+	if err := consumerOf(inbound.LastMileHandlers(&fakeScans{}, &fakeReturner{}, &fakeEtas{}, &fakeFlagger{}, quiet), true).HandleMessage(context.Background(),
 		envelope(t, "e", inbound.TypePackageReturnInitiated, `{"at":"2026-10-23T09:00:00Z"}`)); err == nil {
 		t.Error("a return without a tracking number is poison")
 	}

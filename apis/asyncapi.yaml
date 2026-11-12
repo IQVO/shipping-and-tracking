@@ -102,6 +102,8 @@ channels:
         $ref: "#/components/messages/PackageLost"
       PackageEtaWindowAssigned:
         $ref: "#/components/messages/PackageEtaWindowAssigned"
+      PackageDeliveryPointFlagged:
+        $ref: "#/components/messages/PackageDeliveryPointFlagged"
   vendorConnectivityEvents:
     address: retailnetwork.vendor-connectivity.events
     title: vendor-connectivity integration topic (consumed)
@@ -140,6 +142,8 @@ channels:
         $ref: "#/components/messages/PackageReturnInitiated"
       StopEtaWindowAssigned:
         $ref: "#/components/messages/StopEtaWindowAssigned"
+      DeliveryPointFlagged:
+        $ref: "#/components/messages/DeliveryPointFlagged"
   offerAvailabilityEvents:
     address: retailnetwork.offer-availability.events
     title: offer-availability integration topic (consumed)
@@ -228,7 +232,7 @@ operations:
   consumeLastMileDeliveryEvents:
     action: receive
     title: Consume last-mile-delivery events
-    summary: Receive PackageOutForDelivery, DeliveryAttempted, PackageReturnInitiated, StopEtaWindowAssigned from last-mile-delivery.
+    summary: Receive PackageOutForDelivery, DeliveryAttempted, PackageReturnInitiated, StopEtaWindowAssigned, DeliveryPointFlagged from last-mile-delivery.
     description: |
       Inbound adapter under internal/adapters/inbound/kafka. Reads `retailnetwork.last-mile-delivery.events` in the
       consumer group named by an environment variable (mandatory), records the CloudEvents
@@ -243,6 +247,7 @@ operations:
       - $ref: "#/channels/lastMileEvents/messages/DeliveryAttempted"
       - $ref: "#/channels/lastMileEvents/messages/PackageReturnInitiated"
       - $ref: "#/channels/lastMileEvents/messages/StopEtaWindowAssigned"
+      - $ref: "#/channels/lastMileEvents/messages/DeliveryPointFlagged"
   consumeOfferAvailabilityEvents:
     action: receive
     title: Consume offer-availability events
@@ -539,6 +544,37 @@ components:
                 "assignedAt": "2026-10-24T09:00:00Z"
               }
             }
+    PackageDeliveryPointFlagged:
+      name: PackageDeliveryPointFlagged
+      title: The delivery point of a package was flagged
+      summary: The delivery point of a package failed twice (ADR 0014).
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDeliveryPointFlagged`; subject and key = the tracking number. Raised by RelayDeliveryPointFlag when last-mile-delivery flags the delivery point behind a stop - one event per journey, so customer-ordering can warn the shopper by orderId. The state is unchanged; a newer flag replaces an older one. Consumer: customer-ordering (ADR 0015 there)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageDeliveryPointFlaggedEvent"
+      examples:
+        - name: packageDeliveryPointFlagged
+          summary: The delivery point of a package failed twice.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "5b8e4c2a-1d3f-4e69-b7f2-2f1a5d6c8e24",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDeliveryPointFlagged",
+              "subject": "STT00000000000042",
+              "time": "2026-10-24T16:30:05Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageDeliveryPointFlagged:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "assignmentId": "asg-001",
+                "orderId": "ord-001",
+                "reason": "NOT_HOME",
+                "flaggedAt": "2026-10-24T16:30:00Z"
+              }
+            }
     VendorShipmentConfirmed:
       name: VendorShipmentConfirmed
       title: VendorShipmentConfirmed (consumed from vendor-connectivity)
@@ -762,6 +798,39 @@ components:
                 ],
                 "etaStart": "2026-10-24T13:00:00Z",
                 "etaEnd": "2026-10-24T15:00:00Z"
+              }
+            }
+    DeliveryPointFlagged:
+      name: DeliveryPointFlagged
+      title: DeliveryPointFlagged (consumed from last-mile-delivery)
+      summary: The delivery point behind a stop failed twice (ADR 0014).
+      description: "`type` = `com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged`. One per flagged stop with every tracking number of the stop. Consumed by RelayDeliveryPointFlag - the flag is stored on each journey and relayed per package as PackageDeliveryPointFlagged. stopKey and failures are read and dropped."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/DeliveryPointFlaggedEvent"
+      examples:
+        - name: deliveryPointFlagged
+          summary: DeliveryPointFlagged as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "6c9f5d3b-2e4a-4f70-c8a3-3a2b6e7d9f35",
+              "source": "/retailnetwork/last-mile-delivery",
+              "type": "com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged",
+              "subject": "9f2c7a44e1d8b6f3a5c0e9d2b7f4a1c8e6d3b9f5a2c7e4d1b8f6a3c5e7d9f1b4",
+              "time": "2026-10-24T16:30:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:last-mile-delivery:events:DeliveryPointFlagged:v1",
+              "data": {
+                "stopKey": "9f2c7a44e1d8b6f3a5c0e9d2b7f4a1c8e6d3b9f5a2c7e4d1b8f6a3c5e7d9f1b4",
+                "reason": "NOT_HOME",
+                "failures": 2,
+                "trackingNumbers": [
+                  "STT00000000000042"
+                ],
+                "flaggedAt": "2026-10-24T16:30:00Z"
               }
             }
     CatalogItemCreated:
@@ -1064,6 +1133,36 @@ components:
                 trackingNumbers: {"type": "array", "minItems": 1, "items": {"type": "string"}}
                 etaStart: {"type": "string", "format": "date-time"}
                 etaEnd: {"type": "string", "format": "date-time", "description": "After etaStart."}
+
+    PackageDeliveryPointFlaggedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "assignmentId", "orderId", "reason", "flaggedAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                orderId: {"type": "string"}
+                reason: {"type": "string", "enum": ["NOT_HOME", "ACCESS_PROBLEM"], "description": "A code the storefront words; never driver prose."}
+                flaggedAt: {"type": "string", "format": "date-time"}
+
+    DeliveryPointFlaggedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumbers", "reason", "flaggedAt"]
+              properties:
+                stopKey: {"type": "string", "description": "Opaque stop identifier; read and dropped."}
+                reason: {"type": "string", "enum": ["NOT_HOME", "ACCESS_PROBLEM"]}
+                failures: {"type": "integer", "minimum": 2}
+                trackingNumbers: {"type": "array", "minItems": 1, "items": {"type": "string"}}
+                flaggedAt: {"type": "string", "format": "date-time"}
 
     CatalogItemCreatedEvent:
       allOf:

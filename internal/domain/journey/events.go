@@ -132,6 +132,26 @@ type PackageEtaWindowAssigned struct {
 	AssignedAt     time.Time
 }
 
+// PackageDeliveryPointFlagged is raised by FlagDeliveryPoint; the state is
+// unchanged (ADR 0014).
+type PackageDeliveryPointFlagged struct {
+	shared.Header
+	TrackingNumber TrackingNumber
+	AssignmentID   string
+	OrderID        string
+	Reason         string
+	FlaggedAt      time.Time
+}
+
+// EventName returns "PackageDeliveryPointFlagged".
+func (PackageDeliveryPointFlagged) EventName() string { return "PackageDeliveryPointFlagged" }
+
+// Entity returns "journey".
+func (PackageDeliveryPointFlagged) Entity() string { return entity }
+
+// SubjectID returns the trackingNumber.
+func (e PackageDeliveryPointFlagged) SubjectID() string { return string(e.TrackingNumber) }
+
 // EventName returns "PackageEtaWindowAssigned".
 func (PackageEtaWindowAssigned) EventName() string { return "PackageEtaWindowAssigned" }
 
