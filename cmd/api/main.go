@@ -152,7 +152,9 @@ func buildDeps(pool *pgxpool.Pool, cfg config) usecases.Deps {
 		Catalog: postgres.NewCatalogRepo(pool), Inbox: postgres.NewProcessedEventRepo(pool),
 		Outbox: postgres.NewOutbox(postgres.NewOutboxRepo(pool), outboundkafka.NewEncoder()), UoW: postgres.NewUnitOfWork(pool),
 		Clock: clock.System{}, IDs: ids.Random{}, ShipTo: cfg.shipTo, Sealer: cfg.sealer, StopKeys: cfg.stopKeys,
-		AreaModes: postgres.NewAreaModeRepo(pool),
+		AreaModes:      postgres.NewAreaModeRepo(pool),
+		PickupPoints:   postgres.NewPickupPointRepo(pool),
+		PickupHoldDays: cfg.pickupHoldDays,
 	}
 }
 
@@ -201,7 +203,7 @@ func startConsumers(d usecases.Deps, cfg config, logger *slog.Logger) ([]*worker
 		inboundkafka.NewLinehaulConsumer(cfg.brokers, cfg.groups[envLinehaulGroup], applyScans, logger),
 		inboundkafka.NewLastMileConsumer(cfg.brokers, cfg.groups[envLastMileGroup], applyScans, usecases.NewReturnToSender(d), usecases.NewApplyEtaWindows(d), usecases.NewRelayDeliveryPointFlag(d), logger),
 		inboundkafka.NewCatalogConsumer(cfg.brokers, cfg.groups[envCatalogGroup], usecases.NewRecordCatalogItem(d), logger),
-		inboundkafka.NewNodeTopologyConsumer(cfg.brokers, cfg.groups[envNodeTopicGroup], usecases.NewApplyAreaAssignment(d), logger),
+		inboundkafka.NewNodeTopologyConsumer(cfg.brokers, cfg.groups[envNodeTopicGroup], usecases.NewApplyAreaAssignment(d), usecases.NewNotePickupPoint(d), logger),
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	var ws []*worker
@@ -227,11 +229,15 @@ func startConsumers(d usecases.Deps, cfg config, logger *slog.Logger) ([]*worker
 // startJobs starts the exception-on-silence sweep, the ship-to purge and the
 // housekeeping of the technical tables.
 func startJobs(d usecases.Deps, pool *pgxpool.Pool, cfg config, logger *slog.Logger) ([]*worker, func()) {
-	sweep, purge, house := usecases.NewSweepSilence(d), usecases.NewPurgeShipTo(d), postgres.NewHousekeeping(pool)
+	sweep, uncollected, purge, house := usecases.NewSweepSilence(d), usecases.NewSweepUncollected(d), usecases.NewPurgeShipTo(d), postgres.NewHousekeeping(pool)
 	jobs := []scheduler.Job{
 		{Name: "silence-sweep", Interval: cfg.sweepInterval, RunOnStart: true, Run: func(ctx context.Context) (string, error) {
 			r, err := sweep.Execute(ctx)
 			return fmt.Sprintf("raised=%d lost=%d conflicts=%d", r.Raised, r.Lost, r.Conflicts), err
+		}},
+		{Name: "uncollected-sweep", Interval: cfg.sweepInterval, RunOnStart: true, Run: func(ctx context.Context) (string, error) {
+			r, err := uncollected.Execute(ctx)
+			return fmt.Sprintf("returned=%d considered=%d conflicts=%d", r.Returned, r.Considered, r.Conflicts), err
 		}},
 		{Name: "ship-to-purge", Interval: cfg.housekeeping, RunOnStart: true, Run: func(ctx context.Context) (string, error) {
 			n, err := purge.Execute(ctx)

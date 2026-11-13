@@ -11,6 +11,7 @@ import (
 	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/crypto"
 	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/customerordering"
 	outboxrelay "github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/outbox"
+	"github.com/claudioed/shipping-and-tracking/internal/application/usecases"
 )
 
 // Defaults of the optional variables.
@@ -60,6 +61,7 @@ type config struct {
 	relayInterval   time.Duration
 	relayMaxAttempt int
 	sweepInterval   time.Duration
+	pickupHoldDays  int
 	housekeeping    time.Duration
 	drainDelay      time.Duration
 }
@@ -96,6 +98,13 @@ func loadConfig(env func(string) string, logger *slog.Logger) (config, error) {
 	c.relayInterval = parseDuration("OUTBOX_RELAY_INTERVAL", env("OUTBOX_RELAY_INTERVAL"), outboxrelay.DefaultInterval, logger)
 	c.relayMaxAttempt = parseMaxAttempts(env("OUTBOX_MAX_ATTEMPTS"), logger)
 	c.sweepInterval = parseDuration("SILENCE_SWEEP_INTERVAL", env("SILENCE_SWEEP_INTERVAL"), defaultSweepInterval, logger)
+	if v := env("PICKUP_HOLD_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err != nil || n < 1 {
+			logger.Warn("invalid PICKUP_HOLD_DAYS, keeping the default", "value", v, "default", usecases.DefaultPickupHoldDays)
+		} else {
+			c.pickupHoldDays = n
+		}
+	}
 	c.housekeeping = parseDuration("HOUSEKEEPING_INTERVAL", env("HOUSEKEEPING_INTERVAL"), defaultHousekeepingPeriod, logger)
 	c.drainDelay = parseDrainDelay(env("SHUTDOWN_DRAIN_DELAY"), logger)
 	return c, nil

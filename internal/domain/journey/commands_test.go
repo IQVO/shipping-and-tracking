@@ -151,8 +151,8 @@ func TestStateHelpers(t *testing.T) {
 	if State("").Valid() || State("DONE").Valid() || State("DONE").Terminal() {
 		t.Error("unknown states are invalid and not terminal")
 	}
-	if len(AllScanTypes()) != 9 || ScanType("").Valid() {
-		t.Error("nine scan types, and the empty one is invalid")
+	if len(AllScanTypes()) != 11 || ScanType("").Valid() {
+		t.Error("eleven scan types, and the empty one is invalid")
 	}
 }
 

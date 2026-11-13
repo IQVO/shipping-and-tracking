@@ -58,6 +58,9 @@ type JourneyRepository interface {
 	// ListStale returns one page of the journeys the silence sweep may act on
 	// (see repository.StaleFilter); none is an empty list.
 	ListStale(ctx context.Context, f repository.StaleFilter) ([]*journey.Journey, error)
+	// ListUncollected returns one page of the pickup journeys whose hold
+	// expired (see repository.UncollectedFilter); none is an empty list.
+	ListUncollected(ctx context.Context, f repository.UncollectedFilter) ([]*journey.Journey, error)
 }
 
 // CatalogDimensionsView is the local read model of offer-availability's
@@ -72,6 +75,17 @@ type CatalogDimensionsView interface {
 // AreaModeView is the local read model of node-topology's ServiceAreaAssigned
 // (ADR 0015): the delivery mode and declared carrier options of each postal
 // prefix, staleness-guarded by the assignment version.
+// PickupPointView is the local read model of node-topology's pickup points
+// (ADR 0016).
+type PickupPointView interface {
+	// Upsert stores the row; a RETIRED point is deleted.
+	Upsert(ctx context.Context, p repository.PickupPoint) error
+	// Get returns the point, or ErrNotFound.
+	Get(ctx context.Context, id string) (repository.PickupPoint, error)
+	// Delete forgets a retired point.
+	Delete(ctx context.Context, id string) error
+}
+
 type AreaModeView interface {
 	// Apply stores the row when its assignment version is newer than the
 	// stored one; an equal or older version is acknowledged and dropped. It

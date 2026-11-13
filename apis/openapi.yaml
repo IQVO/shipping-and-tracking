@@ -533,7 +533,7 @@ components:
           format: date-time
     CarrierEventRequest:
       type: object
-      description: One external carrier progress report (ADR 0015). No authentication: the route is exactly as privileged as the scans route.
+      description: "One external carrier progress report (ADR 0015). No authentication - the route is exactly as privileged as the scans route."
       required: [carrierId, carrierEventId, trackingNumber, status, at]
       additionalProperties: false
       properties:
@@ -593,6 +593,21 @@ components:
           type: string
           format: date-time
           description: End of the day-of ETA window. Present exactly when etaStart is.
+        destinationKind:
+          type: string
+          enum: [SHIP_TO, PICKUP_POINT]
+          description: Present only on a pickup journey (ADR 0016).
+        pickupPointId:
+          type: string
+          description: The point of a pickup journey (ADR 0016).
+        readyForCollectionAt:
+          type: string
+          format: date-time
+          description: When the package reached its point (ADR 0016).
+        holdUntil:
+          type: string
+          format: date-time
+          description: The retention deadline of an uncollected package (ADR 0016).
         scans:
           type: array
           items:

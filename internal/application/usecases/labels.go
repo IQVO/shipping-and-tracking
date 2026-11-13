@@ -77,7 +77,69 @@ func (u *IssueLabel) execute(ctx context.Context, cmd IssueLabelCmd) (views.Labe
 	if err != nil {
 		return views.Label{}, err
 	}
+	if addr.Pickup() {
+		return u.issuePickup(ctx, cmd, addr)
+	}
 	return u.issue(ctx, cmd, addr)
+}
+
+// issuePickup issues a pickup label (ADR 0016): no address is read, checked
+// or sealed - the point's own id is the stop identity, one stop key serving
+// every package of the point, and the journey carries the hold deadline.
+func (u *IssueLabel) issuePickup(ctx context.Context, cmd IssueLabelCmd, addr shipto.Address) (views.Label, error) {
+	point, err := u.PickupPoints.Get(ctx, addr.PickupPointID)
+	if errors.Is(err, ports.ErrNotFound) {
+		return views.Label{}, fmt.Errorf("%w: %s", shipto.ErrPickupPointUnavailable, addr.PickupPointID)
+	}
+	if err != nil {
+		return views.Label{}, err
+	}
+	if point.State != "ACTIVE" {
+		return views.Label{}, fmt.Errorf("%w: %s is %s", shipto.ErrPickupPointUnavailable, point.ID, point.State)
+	}
+	now := u.now()
+	in := label.NewLabel{
+		PONumber: cmd.PONumber, PackageNo: cmd.PackageNo, AssignmentID: cmd.AssignmentID, OrderID: cmd.OrderID,
+		Tier: cmd.Tier, StopKey: u.StopKeys.StopKey("pickup-point|" + point.ID), DestinationPostalPrefix: point.PostalPrefix,
+		PickupPointID: point.ID,
+	}
+	for attempt := 0; ; attempt++ {
+		v, err := transact(ctx, u.UoW, func(ctx context.Context) (views.Label, error) {
+			in.Ref, in.TrackingNumber = u.IDs.NewLabelRef(), u.IDs.NewTrackingNumber()
+			return u.createPickup(ctx, in, now.AddDate(0, 0, u.holdDays()))
+		})
+		if errors.Is(err, label.ErrTrackingNumberTaken) && attempt == 0 {
+			continue
+		}
+		return v, err
+	}
+}
+
+// createPickup issues the label and starts a pickup journey; no ship-to
+// snapshot exists for a pickup destination (ADR 0016).
+func (u *IssueLabel) createPickup(ctx context.Context, in label.NewLabel, holdUntil time.Time) (views.Label, error) {
+	now := u.now()
+	l, labelEvents, err := label.Issue(in, now)
+	if err != nil {
+		return views.Label{}, err
+	}
+	j, err := journey.Start(journey.NewJourney{
+		TrackingNumber: in.TrackingNumber, LabelRef: string(in.Ref), PONumber: in.PONumber, AssignmentID: in.AssignmentID,
+		OrderID: in.OrderID, Tier: in.Tier, PickupPointID: in.PickupPointID, HoldUntil: holdUntil,
+	}, now)
+	if err != nil {
+		return views.Label{}, err
+	}
+	if err := u.Labels.Save(ctx, l); err != nil {
+		return views.Label{}, err
+	}
+	if err := u.Journeys.Save(ctx, j); err != nil {
+		return views.Label{}, err
+	}
+	if err := u.publish(ctx, labelEvents); err != nil {
+		return views.Label{}, err
+	}
+	return views.LabelFrom(l), nil
 }
 
 func (u *IssueLabel) issue(ctx context.Context, cmd IssueLabelCmd, addr shipto.Address) (views.Label, error) {
