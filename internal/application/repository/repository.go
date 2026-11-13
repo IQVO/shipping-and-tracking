@@ -3,7 +3,11 @@
 // behaviour; the interfaces are in internal/application/ports.
 package repository
 
-import "time"
+import (
+	"time"
+
+	"github.com/claudioed/shipping-and-tracking/internal/domain/journey"
+)
 
 // SealedShipTo is the encrypted ship-to snapshot of one label: AES-256-GCM
 // ciphertext with its nonce and the id of the key that sealed it. The service
@@ -40,4 +44,24 @@ type CatalogDimensions struct {
 	WeightG       int64
 	Hazmat        bool
 	Fragile       bool
+}
+
+// DeliveryMode of a service area (ADR 0015): NETWORK_ROUTE is the zero value,
+// so an event decoded from a producer that predates C4 means the old behaviour.
+type DeliveryMode string
+
+// The two delivery modes of a service area.
+const (
+	DeliveryModeNetworkRoute   DeliveryMode = "NETWORK_ROUTE"
+	DeliveryModeCarrierHandoff DeliveryMode = "CARRIER_HANDOFF"
+)
+
+// AreaMode is one row of the AreaModeView read model: node-topology's
+// ServiceAreaAssigned folded locally, with the assignment version as the
+// staleness guard.
+type AreaMode struct {
+	PostalPrefix string
+	DeliveryMode DeliveryMode
+	Carriers     []journey.CarrierOption
+	Version      int64
 }

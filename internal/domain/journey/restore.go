@@ -26,7 +26,8 @@ func Restore(s Snapshot) (*Journey, error) {
 		lastScanAt: shared.UTC(s.LastScanAt), lastNodeID: s.LastNodeID, handedOverAt: shared.UTC(s.HandedOverAt),
 		deliveredAt: shared.UTC(s.DeliveredAt), closedAt: shared.UTC(s.ClosedAt),
 		lastExceptedAt: shared.UTC(s.LastExceptionAt), etaStart: shared.UTC(s.EtaStart), etaEnd: shared.UTC(s.EtaEnd),
-		etaAssignedAt: shared.UTC(s.EtaAssignedAt), pointFlagReason: s.PointFlagReason, pointFlaggedAt: shared.UTC(s.PointFlaggedAt), version: s.Version,
+		etaAssignedAt: shared.UTC(s.EtaAssignedAt), pointFlagReason: s.PointFlagReason, pointFlaggedAt: shared.UTC(s.PointFlaggedAt),
+		chosenCarrierID: s.ChosenCarrierID, handoffNodeID: s.HandoffNodeID, areaVersion: s.AreaVersion, version: s.Version,
 	}, nil
 }
 
@@ -51,6 +52,9 @@ func checkSnapshot(s Snapshot) error {
 		return err
 	}
 	if err := checkEta(s); err != nil {
+		return err
+	}
+	if err := checkCarrierChoice(s.ChosenCarrierID, s.HandoffNodeID, s.AreaVersion); err != nil {
 		return err
 	}
 	return checkPointFlag(s)
@@ -101,6 +105,7 @@ func checkScans(scans []Scan) error {
 // that derive from them. It returns the state the scans lead to.
 func replay(s Snapshot) (State, error) {
 	state := StateLabelled
+	carrier := s.ChosenCarrierID != ""
 	var last, handed, delivered time.Time
 	var lastNode string
 	for _, sc := range s.Scans {
@@ -110,7 +115,7 @@ func replay(s Snapshot) (State, error) {
 		if sc.At.Before(last) {
 			return "", fmt.Errorf("applied scan %q is older than the previous applied scan", sc.ID)
 		}
-		to, ok := next(sc.Type, state)
+		to, ok := next(sc.Type, state, carrier)
 		if !ok {
 			return "", fmt.Errorf("applied scan %q (%s) has no edge from %s", sc.ID, sc.Type, state)
 		}

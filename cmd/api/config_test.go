@@ -16,7 +16,7 @@ func goodEnv() map[string]string {
 		"DATABASE_URL": "postgres://u:p@h/db", "KAFKA_BROKERS": "b1:9092, b2:9092",
 		"CUSTOMER_ORDERING_URL": "http://customer-ordering:8080", "SHIP_TO_ENCRYPTION_KEY": base64.StdEncoding.EncodeToString(make([]byte, 32)),
 		"STOP_KEY_SECRET": "0123456789abcdef", "VENDOR_CONSUMER_GROUP": "v", "LINEHAUL_CONSUMER_GROUP": "l",
-		"LASTMILE_CONSUMER_GROUP": "m", "CATALOG_CONSUMER_GROUP": "c",
+		"LASTMILE_CONSUMER_GROUP": "m", "CATALOG_CONSUMER_GROUP": "c", "ST_AREAS_CONSUMER_GROUP": "a",
 	}
 }
 
@@ -65,6 +65,7 @@ func TestEveryMissingOrBadVariableIsABootErrorNamingIt(t *testing.T) {
 		{"linehaul group", "LINEHAUL_CONSUMER_GROUP", "", "LINEHAUL_CONSUMER_GROUP"},
 		{"last-mile group", "LASTMILE_CONSUMER_GROUP", "", "LASTMILE_CONSUMER_GROUP"},
 		{"catalog group", "CATALOG_CONSUMER_GROUP", "", "CATALOG_CONSUMER_GROUP"},
+		{"areas group", "ST_AREAS_CONSUMER_GROUP", "", "ST_AREAS_CONSUMER_GROUP"},
 		{"no encryption key", "SHIP_TO_ENCRYPTION_KEY", "", "SHIP_TO_ENCRYPTION_KEY"},
 		{"short encryption key", "SHIP_TO_ENCRYPTION_KEY", base64.StdEncoding.EncodeToString(make([]byte, 16)), "SHIP_TO_ENCRYPTION_KEY"},
 		{"no stop secret", "STOP_KEY_SECRET", "", "STOP_KEY_SECRET"},

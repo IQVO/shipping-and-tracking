@@ -69,6 +69,18 @@ type CatalogDimensionsView interface {
 	Get(ctx context.Context, catalogItemID string) (repository.CatalogDimensions, error)
 }
 
+// AreaModeView is the local read model of node-topology's ServiceAreaAssigned
+// (ADR 0015): the delivery mode and declared carrier options of each postal
+// prefix, staleness-guarded by the assignment version.
+type AreaModeView interface {
+	// Apply stores the row when its assignment version is newer than the
+	// stored one; an equal or older version is acknowledged and dropped. It
+	// reports whether the row was stored.
+	Apply(ctx context.Context, a repository.AreaMode) (bool, error)
+	// Get returns the row of a prefix, or ErrNotFound.
+	Get(ctx context.Context, postalPrefix string) (repository.AreaMode, error)
+}
+
 // ProcessedEvents is the inbound-consumer idempotency guard (the inbox).
 // Claim records (consumer, CloudEvents id) INSIDE the same UnitOfWork as the
 // event's effect and reports false when an earlier committed handling already

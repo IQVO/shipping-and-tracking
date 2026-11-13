@@ -89,7 +89,8 @@ env_value() { # env_value <rendered> <NAME>
 [[ "$(env_value "$api_deployment" CUSTOMER_ORDERING_URL)" == "http://customer-ordering.example.invalid" ]] || fail "CUSTOMER_ORDERING_URL is not rendered from config.customerOrderingUrl"
 [[ "$(env_value "$api_deployment" EVENT_PUBLISHER)" == "kafka" ]] || fail "EVENT_PUBLISHER must be rendered as kafka"
 for kv in VENDOR_CONSUMER_GROUP=shipping-and-tracking-vendor LINEHAUL_CONSUMER_GROUP=shipping-and-tracking-linehaul \
-  LASTMILE_CONSUMER_GROUP=shipping-and-tracking-lastmile CATALOG_CONSUMER_GROUP=shipping-and-tracking-catalog; do
+  LASTMILE_CONSUMER_GROUP=shipping-and-tracking-lastmile CATALOG_CONSUMER_GROUP=shipping-and-tracking-catalog \
+  ST_AREAS_CONSUMER_GROUP=shipping-and-tracking-areas; do
   [[ "$(env_value "$api_deployment" "${kv%%=*}")" == "${kv#*=}" ]] || fail "the Deployment does not render $kv from config.*"
   grep -q "^  ${kv%%=*}: \"${kv#*=}\"" <<<"$configmap" || fail "the ConfigMap does not carry $kv"
 done
@@ -369,7 +370,7 @@ grep -q 'app.kubernetes.io/component: analytics-reports' <<<"$reports_dep" || fa
 grep -q 'command: \["/app/st-reports"\]' <<<"$reports_dep" || fail "the reports Deployment must run /app/st-reports"
 for dep in "$projector_dep" "$reports_dep"; do
   if grep -q 'configMapRef:' <<<"$dep"; then fail "the analytics Deployments must not mount the api ConfigMap"; fi
-  if grep -Eq 'name: (DATABASE_URL|MIGRATIONS_DATABASE_URL|SHIP_TO_ENCRYPTION_KEY|STOP_KEY_SECRET|CUSTOMER_ORDERING_URL|EVENT_PUBLISHER|OUTBOX_[A-Z_]+|(VENDOR|LINEHAUL|LASTMILE|CATALOG)_CONSUMER_GROUP)$' <<<"$dep"; then
+  if grep -Eq 'name: (DATABASE_URL|MIGRATIONS_DATABASE_URL|SHIP_TO_ENCRYPTION_KEY|STOP_KEY_SECRET|CUSTOMER_ORDERING_URL|EVENT_PUBLISHER|OUTBOX_[A-Z_]+|(VENDOR|LINEHAUL|LASTMILE|CATALOG|ST_AREAS)_CONSUMER_GROUP)$' <<<"$dep"; then
     fail "the analytics Deployments must never get the OLTP DSN, crypto, customer-ordering, relay or OLTP consumer env"
   fi
 done

@@ -23,6 +23,7 @@ data:
   LINEHAUL_CONSUMER_GROUP: {{ .Values.config.linehaulConsumerGroup | quote }}
   LASTMILE_CONSUMER_GROUP: {{ .Values.config.lastmileConsumerGroup | quote }}
   CATALOG_CONSUMER_GROUP: {{ .Values.config.catalogConsumerGroup | quote }}
+  ST_AREAS_CONSUMER_GROUP: {{ .Values.config.areasConsumerGroup | quote }}
   {{- with .Values.config.outboxRelayInterval }}
   OUTBOX_RELAY_INTERVAL: {{ . | quote }}
   {{- end }}

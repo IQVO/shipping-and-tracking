@@ -68,6 +68,29 @@ func (PackageDelivered) Entity() string { return entity }
 // SubjectID returns the trackingNumber.
 func (e PackageDelivered) SubjectID() string { return string(e.TrackingNumber) }
 
+// PackageHandedToCarrier is raised on AT_STATION -> WITH_CARRIER (ADR 0015):
+// the physical handoff of a package of a CARRIER_HANDOFF service area to the
+// deterministically chosen carrier at the handoff node.
+type PackageHandedToCarrier struct {
+	shared.Header
+	TrackingNumber          TrackingNumber
+	AssignmentID            string
+	OrderID                 string
+	CarrierID               string
+	HandoffNodeID           string
+	DestinationPostalPrefix string
+	HandedAt                time.Time
+}
+
+// EventName returns "PackageHandedToCarrier".
+func (PackageHandedToCarrier) EventName() string { return "PackageHandedToCarrier" }
+
+// Entity returns "journey".
+func (PackageHandedToCarrier) Entity() string { return entity }
+
+// SubjectID returns the trackingNumber.
+func (e PackageHandedToCarrier) SubjectID() string { return string(e.TrackingNumber) }
+
 // PackageExceptionRaised is raised by RaiseException; the state is unchanged.
 type PackageExceptionRaised struct {
 	shared.Header
@@ -166,6 +189,7 @@ var (
 	_ shared.Event = PackageEtaWindowAssigned{}
 	_ shared.Event = PackageHandedOver{}
 	_ shared.Event = PackageDelivered{}
+	_ shared.Event = PackageHandedToCarrier{}
 	_ shared.Event = PackageExceptionRaised{}
 	_ shared.Event = PackageReturned{}
 	_ shared.Event = PackageLost{}
