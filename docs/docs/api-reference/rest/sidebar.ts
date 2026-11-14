@@ -48,6 +48,12 @@ const sidebar: SidebarsConfig = {
           label: "Record one scan on a package journey (RecordScan)",
           className: "api-method post",
         },
+        {
+          type: "doc",
+          id: "api-reference/rest/report-carrier-event",
+          label: "Report one external carrier event (ReportCarrierEvent, ADR 0015)",
+          className: "api-method post",
+        },
       ],
     },
     {
