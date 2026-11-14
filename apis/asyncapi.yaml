@@ -22,22 +22,24 @@ info:
     journey, the one customer-visible timeline consolidated from vendor handover,
     load and delivery facts (ADR 0001, ADR 0002).
 
-    **Published.** Eleven events, all on `retailnetwork.shipping-and-tracking.events`,
+    **Published.** Thirteen events, all on `retailnetwork.shipping-and-tracking.events`,
     through a **transactional outbox**: the aggregate rows and their already-encoded
     events are written in ONE database transaction and an always-on relay drains
     them to Kafka (at-least-once; the CloudEvents `id` is stored with the outbox row,
-    so a retry republishes the same `id`). The eleven types are catalogued in ADR 0004.
+    so a retry republishes the same `id`). The thirteen types are catalogued in ADR 0004.
     Every one is an integration event: the model's analytics-only events
     (LabelVoided, PackageReturned, PackageLost) were promoted by contracts-delta
     E6 and E16, so nothing is published on `retailnetwork.shipping-and-tracking.analytics`.
     No event carries a ship-to address or any part of it (the opaque `stopKey` and the
     postal prefix on LabelIssued are the only derived values; ADR 0002 A9, A10).
 
-    **Consumed.** Nine types from five topics (ADR 0003): vendor-connectivity
+    **Consumed.** Fourteen types from five topics (ADR 0003): vendor-connectivity
     VendorShipmentConfirmed, linehaul-transportation LoadDeparted and LoadArrived,
     last-mile-delivery PackageOutForDelivery, DeliveryAttempted,
-    PackageReturnInitiated and StopEtaWindowAssigned, offer-availability
-    CatalogItemCreated, node-topology ServiceAreaAssigned (ADR 0015). Each consumer
+    PackageReturnInitiated, StopEtaWindowAssigned and DeliveryPointFlagged (ADR 0014),
+    offer-availability CatalogItemCreated, node-topology ServiceAreaAssigned (ADR 0015)
+    and the node lifecycle events NodeRegistered, NodeActivated, NodeSuspended and
+    NodeRetired (ADR 0016). Each consumer
     group dedupes on the CloudEvents `id` (inbox table `processed_events`),
     dispatches on the full `type`, ignores unknown types and fields, and parks a
     poison message on `<topic>.dlq`; a transient failure is retried five times first.
@@ -184,7 +186,7 @@ operations:
   publishShippingAndTrackingEvents:
     action: send
     title: Publish shipping-and-tracking events
-    summary: Publish the eleven shipping-and-tracking events through the transactional outbox.
+    summary: Publish the shipping-and-tracking events through the transactional outbox.
     description: |
       The service sends every event of its two aggregates (ShippingLabel,
       PackageJourney) to `retailnetwork.shipping-and-tracking.events`. Consumers route
@@ -213,8 +215,9 @@ operations:
       Inbound adapter internal/adapters/inbound/kafka/analytics_consumer.go, run by
       cmd/st-projector in the consumer group ANALYTICS_CONSUMER_GROUP (default
       shipping-and-tracking-analytics). Dispatches on the full `type`; LabelVoided,
-      PackageHandedOver, PackageHandedToCarrier (ADR 0015), PackageExceptionRaised and
-      PackageEtaWindowAssigned are acknowledged without projection;
+      PackageHandedOver, PackageHandedToCarrier (ADR 0015), PackageExceptionRaised,
+      PackageEtaWindowAssigned, PackageDeliveryPointFlagged, PackageReadyForCollection and
+      PackageCollected are acknowledged without projection;
       any other type or a non-CloudEvents message is skipped with a sampled warning.
     tags:
       - name: shipping-and-tracking

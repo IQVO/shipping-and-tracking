@@ -41,6 +41,10 @@ Every event leaves through the transactional outbox, in the same transaction as 
 | `PackageReturned` | `...journey.PackageReturned` | `trackingNumber` | `ReturnToSender` | delivery-promise |
 | `PackageLost` | `...journey.PackageLost` | `trackingNumber` | `SweepSilence` (`DeclareLost`) | delivery-promise |
 | `PackageEtaWindowAssigned` | `...journey.PackageEtaWindowAssigned` | `trackingNumber` | `ApplyEtaWindows` (`AssignEta`) | customer-ordering (tracking view) |
+| `PackageDeliveryPointFlagged` | `...journey.PackageDeliveryPointFlagged` | `trackingNumber` | `RelayDeliveryPointFlag`, one per package of the stop | customer-ordering |
+| `PackageHandedToCarrier` | `...journey.PackageHandedToCarrier` | `trackingNumber` | a scan taking `AT_STATION` to `WITH_CARRIER` | delivery-promise |
+| `PackageReadyForCollection` | `...journey.PackageReadyForCollection` | `trackingNumber` | a scan taking the journey to `READY_FOR_COLLECTION` | delivery-promise |
+| `PackageCollected` | `...journey.PackageCollected` | `trackingNumber` | a scan taking the journey to `COLLECTED` | none named |
 
 The consumer column comes from the AsyncAPI descriptions; this repository does not verify that each consumer is deployed. In the table `...` abbreviates `com.retailnetwork.logistics.shipping-and-tracking`.
 
@@ -139,6 +143,58 @@ Source: `internal/domain/journey/journey_eta.go`, `packageEtaWindowAssignedData`
 | `etaEnd` | timestamp | End of the window, after `etaStart` |
 | `assignedAt` | timestamp | The route start instant: the CloudEvents `time` of the consumed `StopEtaWindowAssigned`. A window is current only while the journey is `OUT_FOR_DELIVERY` and `assignedAt` is not before the last applied scan |
 
+### PackageDeliveryPointFlagged
+
+Source: `internal/adapters/outbound/kafka/encoder_point_flag.go`, `packageDeliveryPointFlaggedData` (ADR 0014). Not a scan: the state does not change. A newer flag replaces an older one.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `trackingNumber` | string | The package |
+| `assignmentId` | string | The assignment |
+| `orderId` | string | The customer order, so customer-ordering can warn the shopper |
+| `reason` | enum `NOT_HOME`, `ACCESS_PROBLEM` | Why last-mile-delivery flagged the delivery point |
+| `flaggedAt` | timestamp | When the flag was raised, from the consumed `DeliveryPointFlagged` |
+
+### PackageHandedToCarrier
+
+Source: `internal/adapters/outbound/kafka/encoder_carrier.go`, `packageHandedToCarrierData` (ADR 0015). Raised once per journey.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `trackingNumber` | string | The package |
+| `assignmentId` | string | The assignment |
+| `orderId` | string | The customer order |
+| `carrierId` | string | The carrier chosen at the station (ADR 0015) |
+| `handoffNodeId` | string | The handoff node of the chosen carrier option |
+| `destinationPostalPrefix` | string | The label's postal prefix |
+| `handedAt` | timestamp | The time of the handoff scan |
+
+### PackageReadyForCollection
+
+Source: `internal/adapters/outbound/kafka/encoder_pickup.go`, `readyForCollectionData` (ADR 0016).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `trackingNumber` | string | The package |
+| `assignmentId` | string | The assignment |
+| `orderId` | string | The customer order |
+| `pickupPointId` | string | The pickup point the package was deposited at |
+| `readyForCollectionAt` | timestamp | The time of the deposit scan |
+| `holdUntil` | timestamp | The retention deadline the uncollected sweep returns the package after |
+
+### PackageCollected
+
+Source: `internal/adapters/outbound/kafka/encoder_pickup.go`, `collectedData` (ADR 0016). `COLLECTED` is terminal.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `trackingNumber` | string | The package |
+| `assignmentId` | string | The assignment |
+| `orderId` | string | The customer order |
+| `pickupPointId` | string | The pickup point |
+| `collectedAt` | timestamp | The time of the collection scan |
+| `proofCode` | string | Optional; omitted when no proof was taken |
+
 ### Example envelope: PackageDelivered
 
 `PackageDelivered` closes the journey and is what delivery-promise and order-sourcing react to. The values are synthetic.
@@ -164,7 +220,7 @@ Source: `internal/domain/journey/journey_eta.go`, `packageEtaWindowAssignedData`
 
 ## Consumed
 
-Source: `internal/adapters/inbound/kafka/handlers.go`. Consumers dispatch on the full `type` string, never on a suffix; unknown types and unknown fields are ignored.
+Source: `internal/adapters/inbound/kafka/handlers.go`, `handlers_lastmile.go` and `handlers_nodetopology.go`. Consumers dispatch on the full `type` string, never on a suffix; unknown types and unknown fields are ignored.
 
 | Producer | Full `type` | Topic | Fields used | What this context does |
 | --- | --- | --- | --- | --- |
@@ -175,7 +231,11 @@ Source: `internal/adapters/inbound/kafka/handlers.go`. Consumers dispatch on the
 | last-mile-delivery | `...route.DeliveryAttempted` | same topic | `trackingNumber`, `outcome`, `at` | Outcome `DELIVERED` gives a `DELIVERED` scan, any other outcome `DELIVERY_FAILED`. The event has no node id: the scan takes the node of the journey's last applied scan |
 | last-mile-delivery | `...packageattempthistory.PackageReturnInitiated` (the `route` spelling is accepted) | same topic | `trackingNumber`, `at` | `ReturnToSender`: `AT_STATION` to `RETURNED`, raising `PackageReturned` |
 | last-mile-delivery | `...route.StopEtaWindowAssigned` | same topic | `trackingNumbers`, `etaStart`, `etaEnd`; the CloudEvents `time` is the `assignedAt` | `ApplyEtaWindows`: `AssignEta` on every package of the stop, raising `PackageEtaWindowAssigned`. A stale window, a closed journey and an unknown tracking number are counted and acknowledged; `stopNo`, `stopKey` and `routeId` are not kept |
+| last-mile-delivery | `...deliverypointprofile.DeliveryPointFlagged` (ADR 0014) | same topic | `trackingNumbers`, `reason` (`NOT_HOME` or `ACCESS_PROBLEM`), `flaggedAt`; `stopKey` and `failures` are not used | `RelayDeliveryPointFlag`: stores the flag on every journey of the stop and raises `PackageDeliveryPointFlagged` per package. A stale flag, a closed journey and an unknown tracking number are counted and acknowledged |
 | offer-availability | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `retailnetwork.offer-availability.events` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | Upsert of `catalog_dimensions` |
+| node-topology | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | `retailnetwork.node-topology.events` | `postalPrefix`, `assignmentVersion`, `deliveryMode`, `carriers`; `deliveryStationNodeId` and `regionId` are read and dropped | Upsert of `area_modes`, only when `assignmentVersion` is newer than the stored row. An absent `deliveryMode` and `carriers` mean `NETWORK_ROUTE` with no options |
+| node-topology | `...node.NodeRegistered` (ADR 0016) | same topic | `nodeId`, `nodeType`, `servingStationNodeId`, `postalCode` | A `PICKUP_POINT` node adds a pickup-point row in state `PROPOSED`; any other node type is acknowledged without an effect |
+| node-topology | `...node.NodeActivated`, `...node.NodeSuspended`, `...node.NodeRetired` (ADR 0016) | same topic | `nodeId` | Sets the state of the pickup-point row to `ACTIVE` or `SUSPENDED`; `NodeRetired` deletes the row (`usecases/points.go`) |
 
 ### Idempotency
 
