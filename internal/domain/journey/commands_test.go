@@ -151,13 +151,13 @@ func TestStateHelpers(t *testing.T) {
 	if State("").Valid() || State("DONE").Valid() || State("DONE").Terminal() {
 		t.Error("unknown states are invalid and not terminal")
 	}
-	if len(AllScanTypes()) != 8 || ScanType("").Valid() {
-		t.Error("eight scan types, and the empty one is invalid")
+	if len(AllScanTypes()) != 9 || ScanType("").Valid() {
+		t.Error("nine scan types, and the empty one is invalid")
 	}
 }
 
 func TestNextIsUndefinedForUnknownScanTypes(t *testing.T) {
-	if to, ok := next("TELEPORT", StateLabelled); ok || to != "" {
+	if to, ok := next("TELEPORT", StateLabelled, false); ok || to != "" {
 		t.Fatalf("got %s %v", to, ok)
 	}
 }

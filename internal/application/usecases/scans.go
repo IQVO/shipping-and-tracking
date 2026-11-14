@@ -42,22 +42,56 @@ func (u *RecordScan) Execute(ctx context.Context, cmd RecordScanCmd) (views.Jour
 		if err != nil {
 			return refusal{}, err
 		}
-		res, scanErr := j.RecordScan(journey.ScanInput{ID: cmd.ScanID, NodeID: cmd.NodeID, Type: cmd.Type, At: cmd.At}, u.now())
-		if !res.Changed {
-			return refusal{}, scanErr
-		}
-		if err := u.Journeys.Save(ctx, j); err != nil {
-			return refusal{}, err
-		}
-		if err := u.publish(ctx, res.Events); err != nil {
-			return refusal{}, err
-		}
-		return refusal{view: views.JourneyFrom(j), err: scanErr}, nil
+		return u.record(ctx, j, cmd)
 	})
 	if err != nil {
 		return views.Journey{}, err
 	}
 	return out.view, out.err
+}
+
+// record maps one validated scan onto the journey; a CARRIER_HANDOFF scan
+// presumes a carrier area and carries the label prefix (ADR 0015).
+func (u *RecordScan) record(ctx context.Context, j *journey.Journey, cmd RecordScanCmd) (refusal, error) {
+	in := journey.ScanInput{ID: cmd.ScanID, NodeID: cmd.NodeID, Type: cmd.Type, At: cmd.At}
+	if cmd.Type == journey.ScanCarrierHandoff {
+		prefix, err := u.handoffPrefix(ctx, j)
+		if err != nil {
+			return refusal{}, err
+		}
+		in.DestinationPostalPrefix = prefix
+	}
+	res, scanErr := j.RecordScan(in, u.now())
+	if !res.Changed {
+		return refusal{}, scanErr
+	}
+	if err := u.noteCarrierChoice(ctx, j); err != nil {
+		return refusal{}, err
+	}
+	if err := u.Journeys.Save(ctx, j); err != nil {
+		return refusal{}, err
+	}
+	if err := u.publish(ctx, res.Events); err != nil {
+		return refusal{}, err
+	}
+	return refusal{view: views.JourneyFrom(j), err: scanErr}, nil
+}
+
+// handoffPrefix resolves the label prefix for a CARRIER_HANDOFF scan and
+// refuses it when the area's deliveryMode is not CARRIER_HANDOFF (ADR 0015).
+func (u *RecordScan) handoffPrefix(ctx context.Context, j *journey.Journey) (string, error) {
+	prefix, err := u.labelPrefix(ctx, j)
+	if err != nil {
+		return "", err
+	}
+	carrierArea, err := u.isCarrierArea(ctx, prefix)
+	if err != nil {
+		return "", err
+	}
+	if !carrierArea {
+		return "", shared.Invalid("a CARRIER_HANDOFF scan requires an area whose deliveryMode is CARRIER_HANDOFF (prefix %s)", prefix)
+	}
+	return prefix, nil
 }
 
 // Fact is one tracking number's share of a consumed event, ready to be a scan.
@@ -133,6 +167,9 @@ func (u *ApplyScans) applyOne(ctx context.Context, eventID string, f Fact, res *
 	r, scanErr := j.RecordScan(in, u.now())
 	if !r.Changed {
 		return count(res, scanErr)
+	}
+	if err := u.noteCarrierChoice(ctx, j); err != nil {
+		return err
 	}
 	if err := u.Journeys.Save(ctx, j); err != nil {
 		return err

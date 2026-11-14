@@ -65,6 +65,12 @@ func inState(t *testing.T, state State) *Journey {
 		_, err := j.DeclareLost(at(20), at(21))
 		mustNoErr(t, err)
 		return j
+	case StateWithCarrier:
+		driveTo(t, j, StateAtStation)
+		mustNoErr(t, j.NoteCarrierChoice("crr-1", "node-handoff", 1))
+		_, err := j.RecordScan(scan("s"+string(ScanCarrierHandoff), ScanCarrierHandoff, 4), at(4))
+		mustNoErr(t, err)
+		return j
 	}
 	driveTo(t, j, state)
 	return j

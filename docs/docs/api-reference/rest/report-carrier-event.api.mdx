@@ -1,0 +1,70 @@
+---
+id: report-carrier-event
+title: "Report one external carrier event (ReportCarrierEvent, ADR 0015)"
+description: "The carrier webhook of CARRIER_HANDOFF service areas. Unauthenticated by the standing fleet decision, exactly like POST /journeys/{trackingNumber}/scans (the per-carrier token scheme is a recorded follow-up). Each report becomes one scan with scanId '<carrierId>:<carrierEventId>', so a re-sent report answers 409 duplicate-scan. PICKED_UP is the handoff at the journey's handoff node (a journey already WITH_CARRIER is a no-op that answers 200); OUT_FOR_DELIVERY, DELIVERED and DELIVERY_FAILED become their scans; IN_TRANSIT is accepted and counted without a scan."
+sidebar_label: "Report one external carrier event (ReportCarrierEvent, ADR 0015)"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "post api-method"
+info_path: docs/api-reference/rest/shipping-tracking-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Report one external carrier event (ReportCarrierEvent, ADR 0015)"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/carrier-events"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+The carrier webhook of CARRIER_HANDOFF service areas. Unauthenticated by the standing fleet decision, exactly like POST /journeys/\{trackingNumber\}/scans (the per-carrier token scheme is a recorded follow-up). Each report becomes one scan with scanId "&lt;carrierId&gt;:&lt;carrierEventId&gt;", so a re-sent report answers 409 duplicate-scan. PICKED_UP is the handoff at the journey's handoff node (a journey already WITH_CARRIER is a no-op that answers 200); OUT_FOR_DELIVERY, DELIVERED and DELIVERY_FAILED become their scans; IN_TRANSIT is accepted and counted without a scan.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./report-carrier-event.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./report-carrier-event.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./report-carrier-event.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

@@ -15,8 +15,8 @@
 //	CUSTOMER_ORDERING_TIMEOUT   one GetShipTo call (default 3s)
 //	SHIP_TO_ENCRYPTION_KEY      base64 of the 32-byte AES-256-GCM key (REQUIRED)
 //	STOP_KEY_SECRET             HMAC secret of the stopKey, at least 16 bytes (REQUIRED)
-//	VENDOR_CONSUMER_GROUP, LINEHAUL_CONSUMER_GROUP, LASTMILE_CONSUMER_GROUP, CATALOG_CONSUMER_GROUP
-//	                            stable group ids (ALL REQUIRED, boot error naming the variable)
+//	VENDOR_CONSUMER_GROUP, LINEHAUL_CONSUMER_GROUP, LASTMILE_CONSUMER_GROUP, CATALOG_CONSUMER_GROUP,
+//	ST_AREAS_CONSUMER_GROUP     stable group ids (ALL REQUIRED, boot error naming the variable)
 //	OUTBOX_RELAY_INTERVAL       relay poll interval (Go duration or seconds, default 1s)
 //	OUTBOX_MAX_ATTEMPTS         failures before the relay excludes a row (default 20, 0 = unlimited)
 //	SILENCE_SWEEP_INTERVAL      exception-on-silence sweep period (default 5m)
@@ -152,13 +152,15 @@ func buildDeps(pool *pgxpool.Pool, cfg config) usecases.Deps {
 		Catalog: postgres.NewCatalogRepo(pool), Inbox: postgres.NewProcessedEventRepo(pool),
 		Outbox: postgres.NewOutbox(postgres.NewOutboxRepo(pool), outboundkafka.NewEncoder()), UoW: postgres.NewUnitOfWork(pool),
 		Clock: clock.System{}, IDs: ids.Random{}, ShipTo: cfg.shipTo, Sealer: cfg.sealer, StopKeys: cfg.stopKeys,
+		AreaModes: postgres.NewAreaModeRepo(pool),
 	}
 }
 
 func buildServer(d usecases.Deps, pool *pgxpool.Pool, readiness *inboundhttp.Readiness) *inboundhttp.Server {
 	return &inboundhttp.Server{
 		IssueLabel: usecases.NewIssueLabel(d), VoidLabel: usecases.NewVoidLabel(d),
-		RecordScan: usecases.NewRecordScan(d), GetJourney: usecases.NewGetJourney(d),
+		RecordScan: usecases.NewRecordScan(d), ReportCarrierEvent: usecases.NewReportCarrierEvent(d),
+		GetJourney: usecases.NewGetJourney(d),
 		Idempotency: func(route string) func(http.Handler) http.Handler {
 			return inboundhttp.RequireIdempotencyKey(pool, pgtx.With, route)
 		},
@@ -199,6 +201,7 @@ func startConsumers(d usecases.Deps, cfg config, logger *slog.Logger) ([]*worker
 		inboundkafka.NewLinehaulConsumer(cfg.brokers, cfg.groups[envLinehaulGroup], applyScans, logger),
 		inboundkafka.NewLastMileConsumer(cfg.brokers, cfg.groups[envLastMileGroup], applyScans, usecases.NewReturnToSender(d), usecases.NewApplyEtaWindows(d), usecases.NewRelayDeliveryPointFlag(d), logger),
 		inboundkafka.NewCatalogConsumer(cfg.brokers, cfg.groups[envCatalogGroup], usecases.NewRecordCatalogItem(d), logger),
+		inboundkafka.NewNodeTopologyConsumer(cfg.brokers, cfg.groups[envNodeTopicGroup], usecases.NewApplyAreaAssignment(d), logger),
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	var ws []*worker

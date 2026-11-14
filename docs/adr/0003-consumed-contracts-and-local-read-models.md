@@ -32,6 +32,7 @@ CloudEvents `type`, deduplicated on the CloudEvents `id` in `processed_events` (
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned` (ADR 0013) | `trackingNumbers[]`, `etaStart`, `etaEnd`; the CloudEvents `time` is the `assignedAt` | `AssignEta` per tracking number (the day-of ETA window; not a scan) |
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged` (ADR 0014) | `trackingNumbers[]`, `reason`, `flaggedAt`; `stopKey` and `failures` dropped | `RelayDeliveryPointFlag` per tracking number (the delivery-point flag; not a scan) |
 | offer-availability (Conformist) | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | upsert `catalog_dimensions` |
+| node-topology (Conformist) | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | `postalPrefix`, `assignmentVersion`, `deliveryMode`, `carriers[]` (`carrierId`, `handoffNodeId`, `costPerPackageCents`, `transitMinutes`); `deliveryStationNodeId` and `regionId` read and dropped; absent `deliveryMode`/`carriers` = `NETWORK_ROUTE`, no options | upsert `area_modes` under the assignment-version guard |
 
 The entity segment of `PackageReturnInitiated` is `packageattempthistory` in last-mile-delivery's pushed
 AsyncAPI; the `route` spelling is kept as a tolerated alias. Types not in the table are
@@ -50,8 +51,10 @@ acknowledged and ignored.
 
 ### Local read model
 
-`CatalogDimensionsView` (`catalog_dimensions`) is the only read model. It accepts no command and enforces no
-invariant (ADR 0002 A18).
+`CatalogDimensionsView` (`catalog_dimensions`) accepts no command and enforces no invariant (ADR 0002 A18).
+`AreaModeView` (`area_modes`, ADR 0015) is the second read model: one row per postal prefix with the area's
+delivery mode and declared carrier options, upserted only when the event's `assignmentVersion` is strictly newer
+than the stored one (the same guard delivery-promise uses).
 
 ### Synchronous call
 
@@ -71,6 +74,7 @@ the transaction. The address lives in memory for the duration of the request onl
 
 ## Consequences
 
-- Four mandatory consumer-group variables: `VENDOR_CONSUMER_GROUP`, `LINEHAUL_CONSUMER_GROUP`,
-  `LASTMILE_CONSUMER_GROUP`, `CATALOG_CONSUMER_GROUP`. A missing one is a boot error naming it.
+- Five mandatory consumer-group variables: `VENDOR_CONSUMER_GROUP`, `LINEHAUL_CONSUMER_GROUP`,
+  `LASTMILE_CONSUMER_GROUP`, `CATALOG_CONSUMER_GROUP` and `ST_AREAS_CONSUMER_GROUP` (the node-topology
+  reader, ADR 0015). A missing one is a boot error naming it.
 - No other sibling is contacted at runtime.

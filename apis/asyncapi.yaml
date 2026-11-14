@@ -22,21 +22,22 @@ info:
     journey, the one customer-visible timeline consolidated from vendor handover,
     load and delivery facts (ADR 0001, ADR 0002).
 
-    **Published.** Nine events, all on `retailnetwork.shipping-and-tracking.events`,
+    **Published.** Eleven events, all on `retailnetwork.shipping-and-tracking.events`,
     through a **transactional outbox**: the aggregate rows and their already-encoded
     events are written in ONE database transaction and an always-on relay drains
     them to Kafka (at-least-once; the CloudEvents `id` is stored with the outbox row,
-    so a retry republishes the same `id`). The nine types are catalogued in ADR 0004.
+    so a retry republishes the same `id`). The eleven types are catalogued in ADR 0004.
     Every one is an integration event: the model's analytics-only events
     (LabelVoided, PackageReturned, PackageLost) were promoted by contracts-delta
     E6 and E16, so nothing is published on `retailnetwork.shipping-and-tracking.analytics`.
     No event carries a ship-to address or any part of it (the opaque `stopKey` and the
     postal prefix on LabelIssued are the only derived values; ADR 0002 A9, A10).
 
-    **Consumed.** Eight types from four topics (ADR 0003): vendor-connectivity
+    **Consumed.** Nine types from five topics (ADR 0003): vendor-connectivity
     VendorShipmentConfirmed, linehaul-transportation LoadDeparted and LoadArrived,
     last-mile-delivery PackageOutForDelivery, DeliveryAttempted,
-    PackageReturnInitiated and StopEtaWindowAssigned, offer-availability CatalogItemCreated. Each consumer
+    PackageReturnInitiated and StopEtaWindowAssigned, offer-availability
+    CatalogItemCreated, node-topology ServiceAreaAssigned (ADR 0015). Each consumer
     group dedupes on the CloudEvents `id` (inbox table `processed_events`),
     dispatches on the full `type`, ignores unknown types and fields, and parks a
     poison message on `<topic>.dlq`; a transient failure is retried five times first.
@@ -104,6 +105,18 @@ channels:
         $ref: "#/components/messages/PackageEtaWindowAssigned"
       PackageDeliveryPointFlagged:
         $ref: "#/components/messages/PackageDeliveryPointFlagged"
+      PackageHandedToCarrier:
+        $ref: "#/components/messages/PackageHandedToCarrier"
+  nodeTopologyEvents:
+    address: retailnetwork.node-topology.events
+    title: node-topology integration topic (consumed)
+    description: |
+      Owned by node-topology; this service only reads it, in its own consumer group
+      (ST_AREAS_CONSUMER_GROUP), and relies on the fields listed on each message.
+      Unknown fields and unknown types are ignored.
+    messages:
+      ServiceAreaAssigned:
+        $ref: "#/components/messages/ServiceAreaAssigned"
   vendorConnectivityEvents:
     address: retailnetwork.vendor-connectivity.events
     title: vendor-connectivity integration topic (consumed)
@@ -159,7 +172,7 @@ operations:
   publishShippingAndTrackingEvents:
     action: send
     title: Publish shipping-and-tracking events
-    summary: Publish the nine shipping-and-tracking events through the transactional outbox.
+    summary: Publish the eleven shipping-and-tracking events through the transactional outbox.
     description: |
       The service sends every event of its two aggregates (ShippingLabel,
       PackageJourney) to `retailnetwork.shipping-and-tracking.events`. Consumers route
@@ -178,6 +191,8 @@ operations:
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageReturned"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageLost"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageEtaWindowAssigned"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageDeliveryPointFlagged"
+      - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageHandedToCarrier"
   projectOwnEventsForAnalytics:
     action: receive
     title: Project this context's own events into the analytical database
@@ -186,7 +201,8 @@ operations:
       Inbound adapter internal/adapters/inbound/kafka/analytics_consumer.go, run by
       cmd/st-projector in the consumer group ANALYTICS_CONSUMER_GROUP (default
       shipping-and-tracking-analytics). Dispatches on the full `type`; LabelVoided,
-      PackageHandedOver, PackageExceptionRaised and PackageEtaWindowAssigned are acknowledged without projection;
+      PackageHandedOver, PackageHandedToCarrier (ADR 0015), PackageExceptionRaised and
+      PackageEtaWindowAssigned are acknowledged without projection;
       any other type or a non-CloudEvents message is skipped with a sampled warning.
     tags:
       - name: shipping-and-tracking
@@ -198,6 +214,22 @@ operations:
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageDelivered"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageReturned"
       - $ref: "#/channels/shippingAndTrackingEvents/messages/PackageLost"
+  consumeNodeTopologyEvents:
+    action: receive
+    title: Consume node-topology events
+    summary: Receive ServiceAreaAssigned from node-topology (ADR 0015).
+    description: |
+      Inbound adapter under internal/adapters/inbound/kafka. Reads `retailnetwork.node-topology.events` in the
+      consumer group named by ST_AREAS_CONSUMER_GROUP (mandatory), records the CloudEvents
+      `id` in `processed_events` in the same transaction as the effect, and dead-letters
+      a message it cannot decode. An assignment version older than the stored row is
+      acknowledged and dropped.
+    tags:
+      - name: shipping-and-tracking
+    channel:
+      $ref: "#/channels/nodeTopologyEvents"
+    messages:
+      - $ref: "#/channels/nodeTopologyEvents/messages/ServiceAreaAssigned"
   consumeVendorConnectivityEvents:
     action: receive
     title: Consume vendor-connectivity events
@@ -575,6 +607,39 @@ components:
                 "flaggedAt": "2026-10-24T16:30:00Z"
               }
             }
+    PackageHandedToCarrier:
+      name: PackageHandedToCarrier
+      title: A package was handed to an external carrier (ADR 0015)
+      summary: A package of a CARRIER_HANDOFF service area was handed to the chosen carrier.
+      description: "`type` = `com.retailnetwork.logistics.shipping-and-tracking.journey.PackageHandedToCarrier`; raised on AT_STATION to WITH_CARRIER, once per journey (a repeat handoff scan is a duplicate). Subject and key = the trackingNumber. `carrierId` and `handoffNodeId` are the deterministic choice computed at the station (ADR 0015); `destinationPostalPrefix` is the label's prefix. Consumer: delivery-promise (carrier transit actuals)."
+      contentType: application/cloudevents+json
+      tags:
+        - name: journey
+      payload:
+        $ref: "#/components/schemas/PackageHandedToCarrierEvent"
+      examples:
+        - name: packageHandedToCarrier
+          summary: A package was handed to an external carrier.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c0a",
+              "source": "/retailnetwork/shipping-and-tracking",
+              "type": "com.retailnetwork.logistics.shipping-and-tracking.journey.PackageHandedToCarrier",
+              "subject": "STT00000000000042",
+              "time": "2026-11-13T09:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:shipping-and-tracking:events:PackageHandedToCarrier:v1",
+              "data": {
+                "trackingNumber": "STT00000000000042",
+                "assignmentId": "asg-001",
+                "orderId": "ord-001",
+                "carrierId": "crr-fast",
+                "handoffNodeId": "node-sc-03",
+                "destinationPostalPrefix": "01310",
+                "handedAt": "2026-11-13T08:55:00Z"
+              }
+            }
     VendorShipmentConfirmed:
       name: VendorShipmentConfirmed
       title: VendorShipmentConfirmed (consumed from vendor-connectivity)
@@ -867,6 +932,51 @@ components:
                 "fragile": true
               }
             }
+    ServiceAreaAssigned:
+      name: ServiceAreaAssigned
+      title: ServiceAreaAssigned (consumed from node-topology)
+      summary: A postal prefix was assigned to a delivery station (ADR 0015).
+      description: "`type` = `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned`. Tolerant local copy: `deliveryStationNodeId` and `regionId` are read and dropped. `deliveryMode` and `carriers` are additive v1 fields (ADR 0016 there); their absence means NETWORK_ROUTE with no options, so a pre-C4 replay keeps the old meaning. Upserted into `area_modes` only when `assignmentVersion` beats the stored row."
+      contentType: application/cloudevents+json
+      tags:
+        - name: shipping-and-tracking
+      payload:
+        $ref: "#/components/schemas/ServiceAreaAssignedEvent"
+      examples:
+        - name: serviceAreaAssigned
+          summary: ServiceAreaAssigned as this service relies on it.
+          payload:
+            {
+              "specversion": "1.0",
+              "id": "7c1f5a2e-3d8b-4f6a-b9e4-1f2a3b4c5d6e",
+              "source": "/retailnetwork/node-topology",
+              "type": "com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned",
+              "subject": "01310",
+              "time": "2026-11-13T07:00:00Z",
+              "datacontenttype": "application/json",
+              "dataschema": "urn:retailnetwork:node-topology:events:ServiceAreaAssigned:v1",
+              "data": {
+                "postalPrefix": "01310",
+                "deliveryStationNodeId": "node-ds-07",
+                "regionId": "reg-1",
+                "assignmentVersion": 4,
+                "deliveryMode": "CARRIER_HANDOFF",
+                "carriers": [
+                  {
+                    "carrierId": "crr-fast",
+                    "handoffNodeId": "node-sc-03",
+                    "costPerPackageCents": 420,
+                    "transitMinutes": 1440
+                  },
+                  {
+                    "carrierId": "crr-saver",
+                    "handoffNodeId": "node-sc-03",
+                    "costPerPackageCents": 380,
+                    "transitMinutes": 2880
+                  }
+                ]
+              }
+            }
 
   schemas:
     CloudEventEnvelope:
@@ -888,11 +998,11 @@ components:
 
     ScanType:
       type: string
-      enum: [SHIPMENT_CONFIRMED, PICKUP_DEPARTURE, DEPARTURE, TRANSIT_ARRIVAL, STATION_ARRIVAL, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED]
+      enum: [SHIPMENT_CONFIRMED, PICKUP_DEPARTURE, DEPARTURE, TRANSIT_ARRIVAL, STATION_ARRIVAL, CARRIER_HANDOFF, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED]
 
     JourneyState:
       type: string
-      enum: [LABELLED, HANDED_OVER, IN_TRANSIT, AT_STATION, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST, VOIDED]
+      enum: [LABELLED, HANDED_OVER, IN_TRANSIT, AT_STATION, WITH_CARRIER, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST, VOIDED]
 
     LabelIssuedEvent:
       allOf:
@@ -1027,6 +1137,23 @@ components:
                 etaStart: {"type": "string", "format": "date-time"}
                 etaEnd: {"type": "string", "format": "date-time", "description": "After etaStart."}
                 assignedAt: {"type": "string", "format": "date-time", "description": "The route start instant: the CloudEvents time of the consumed StopEtaWindowAssigned."}
+
+    PackageHandedToCarrierEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["trackingNumber", "assignmentId", "orderId", "carrierId", "handoffNodeId", "destinationPostalPrefix", "handedAt"]
+              properties:
+                trackingNumber: {"type": "string"}
+                assignmentId: {"type": "string"}
+                orderId: {"type": "string"}
+                carrierId: {"type": "string", "description": "The deterministic choice of the area's declared options (ADR 0015)."}
+                handoffNodeId: {"type": "string", "description": "The node the carrier collects the package at."}
+                destinationPostalPrefix: {"type": "string", "description": "The label's postal prefix."}
+                handedAt: {"type": "string", "format": "date-time"}
 
     VendorShipmentConfirmedEvent:
       allOf:
@@ -1181,3 +1308,19 @@ components:
                 weightG: {"type": "integer"}
                 hazmat: {"type": "boolean"}
                 fragile: {"type": "boolean"}
+
+    ServiceAreaAssignedEvent:
+      allOf:
+        - $ref: "#/components/schemas/CloudEventEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: ["postalPrefix", "assignmentVersion"]
+              properties:
+                postalPrefix: {"type": "string"}
+                deliveryStationNodeId: {"type": "string", "description": "Read and dropped."}
+                regionId: {"type": "string", "description": "Read and dropped."}
+                assignmentVersion: {"type": "integer", "minimum": 1}
+                deliveryMode: {"type": "string", "enum": ["NETWORK_ROUTE", "CARRIER_HANDOFF"], "description": "Absent means NETWORK_ROUTE (the pre-C4 meaning)."}
+                carriers: {"type": "array", "description": "The declared carrier options of a CARRIER_HANDOFF area; absent or empty means none.", "items": {"type": "object", "required": ["carrierId", "handoffNodeId", "transitMinutes"], "properties": {"carrierId": {"type": "string"}, "handoffNodeId": {"type": "string"}, "costPerPackageCents": {"type": "integer", "minimum": 0}, "transitMinutes": {"type": "integer", "minimum": 1}}}}

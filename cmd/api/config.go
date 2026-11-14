@@ -31,13 +31,14 @@ const (
 // Consumer-group variables: every one is mandatory, a missing one is a boot
 // error naming it.
 const (
-	envVendorGroup   = "VENDOR_CONSUMER_GROUP"
-	envLinehaulGroup = "LINEHAUL_CONSUMER_GROUP"
-	envLastMileGroup = "LASTMILE_CONSUMER_GROUP"
-	envCatalogGroup  = "CATALOG_CONSUMER_GROUP"
+	envVendorGroup    = "VENDOR_CONSUMER_GROUP"
+	envLinehaulGroup  = "LINEHAUL_CONSUMER_GROUP"
+	envLastMileGroup  = "LASTMILE_CONSUMER_GROUP"
+	envCatalogGroup   = "CATALOG_CONSUMER_GROUP"
+	envNodeTopicGroup = "ST_AREAS_CONSUMER_GROUP"
 )
 
-var consumerGroupVars = []string{envVendorGroup, envLinehaulGroup, envLastMileGroup, envCatalogGroup}
+var consumerGroupVars = []string{envVendorGroup, envLinehaulGroup, envLastMileGroup, envCatalogGroup, envNodeTopicGroup}
 
 // Boot errors for the variables the context cannot run without. Each message
 // names the variable.

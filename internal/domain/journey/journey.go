@@ -63,6 +63,9 @@ type Journey struct {
 	etaAssignedAt   time.Time
 	pointFlagReason string
 	pointFlaggedAt  time.Time
+	chosenCarrierID string
+	handoffNodeID   string
+	areaVersion     int64
 	version         int64
 }
 
@@ -88,6 +91,9 @@ type Snapshot struct {
 	EtaAssignedAt   time.Time
 	PointFlagReason string
 	PointFlaggedAt  time.Time
+	ChosenCarrierID string
+	HandoffNodeID   string
+	AreaVersion     int64
 	Version         int64
 }
 
@@ -134,6 +140,10 @@ type ScanInput struct {
 	NodeID string
 	Type   ScanType
 	At     time.Time
+	// DestinationPostalPrefix is the label's postal prefix; it rides the
+	// PackageHandedToCarrier event of a CARRIER_HANDOFF scan (ADR 0015) and is
+	// ignored by every other scan type.
+	DestinationPostalPrefix string
 }
 
 // Result tells the caller what a command did. Changed is true when the
@@ -161,7 +171,10 @@ func (in ScanInput) validate() error {
 	return nil
 }
 
-func (j *Journey) hasScan(id string) bool {
+// HasScan reports whether a scanId is already on the journey: the carrier
+// re-send rule of ADR 0015 needs it (a re-sent report is ErrDuplicateScan
+// even when the journey is already in carrier custody).
+func (j *Journey) HasScan(id string) bool {
 	for _, s := range j.scans {
 		if s.ID == id {
 			return true
@@ -185,7 +198,7 @@ func (j *Journey) RecordScan(in ScanInput, now time.Time) (Result, error) {
 	if j.state.Terminal() {
 		return Result{}, fmt.Errorf("%w: journey %s is %s", ErrJourneyClosed, j.tracking, j.state)
 	}
-	if j.hasScan(in.ID) {
+	if j.HasScan(in.ID) {
 		return Result{}, fmt.Errorf("%w: %s", ErrDuplicateScan, in.ID)
 	}
 	if !j.lastScanAt.IsZero() && in.At.Before(j.lastScanAt) {
@@ -193,7 +206,13 @@ func (j *Journey) RecordScan(in ScanInput, now time.Time) (Result, error) {
 		return Result{Changed: true}, fmt.Errorf("%w: %s is older than the last applied scan at %s",
 			ErrScanOutOfOrder, in.ID, j.lastScanAt.Format(time.RFC3339))
 	}
-	to, ok := next(in.Type, j.state)
+	// A physical handoff to a carrier presumes the deterministic choice was
+	// computed at the station (ADR 0015); without one the scan is a plain
+	// validation refusal.
+	if in.Type == ScanCarrierHandoff && !j.CarrierChosen() {
+		return Result{}, shared.Invalid("a %s scan requires a journey whose area mode is CARRIER_HANDOFF", in.Type)
+	}
+	to, ok := next(in.Type, j.state, j.CarrierChosen())
 	if !ok {
 		j.store(in, false)
 		return Result{Changed: true}, fmt.Errorf("%w: a %s scan has no edge from %s", shared.ErrIllegalTransition, in.Type, j.state)
@@ -217,6 +236,13 @@ func (j *Journey) apply(in ScanInput, to State, now time.Time) []shared.Event {
 		j.handedOverAt = j.lastScanAt
 		evs = append(evs, PackageHandedOver{
 			Header: h, TrackingNumber: j.tracking, PONumber: j.poNumber, NodeID: in.NodeID, HandedOverAt: j.handedOverAt,
+		})
+	}
+	if from == StateAtStation && to == StateWithCarrier {
+		evs = append(evs, PackageHandedToCarrier{
+			Header: h, TrackingNumber: j.tracking, AssignmentID: j.assignmentID, OrderID: j.orderID,
+			CarrierID: j.chosenCarrierID, HandoffNodeID: j.handoffNodeID,
+			DestinationPostalPrefix: in.DestinationPostalPrefix, HandedAt: j.lastScanAt,
 		})
 	}
 	if to == StateDelivered {

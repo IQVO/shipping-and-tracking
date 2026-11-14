@@ -49,7 +49,7 @@ func TestMigrationsGoUpDownUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	want := []string{"catalog_dimensions", "idempotency_keys", "journey_scans", "outbox_events", "package_journeys",
+	want := []string{"area_modes", "catalog_dimensions", "idempotency_keys", "journey_scans", "outbox_events", "package_journeys",
 		"processed_events", "ship_to_snapshots", "shipping_labels"}
 	rows, err := pool.Query(context.Background(),
 		`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> 'schema_migrations' ORDER BY table_name`)

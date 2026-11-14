@@ -30,6 +30,9 @@ type Deps struct {
 	ShipTo    ports.ShipToGateway
 	Sealer    ports.ShipToSealer
 	StopKeys  ports.StopKeyer
+	// AreaModes is the local read model of node-topology's service-area
+	// delivery mode (ADR 0015); nil disables the carrier-choice branch (tests).
+	AreaModes ports.AreaModeView
 	// Metrics records the business outcome of each label-issue attempt; nil
 	// records nothing, so unit tests need no wiring.
 	Metrics ports.LabelMetrics
