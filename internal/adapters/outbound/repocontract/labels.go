@@ -109,6 +109,73 @@ var labelCases = []named{
 		noErr(t, err)
 		wantErr(t, f.Labels.Save(context.Background(), p.Label), ports.ErrConcurrentUpdate)
 	}},
+	{"a return label round-trips purpose and authorization (ADR 0017)", func(t *testing.T, f Fixture) {
+		ctx := context.Background()
+		l := NewReturnLabel(t, 1)
+		noErr(t, f.Labels.Save(ctx, l))
+		got, err := f.Labels.Get(ctx, l.Ref())
+		noErr(t, err)
+		if !reflect.DeepEqual(got.Snapshot(), l.Snapshot()) {
+			t.Fatalf("round trip differs:\n%+v\n%+v", got.Snapshot(), l.Snapshot())
+		}
+		if got.Purpose() != label.PurposeReturn || got.ReturnAuthorizationID() != "ret-1" || got.Carrier() != label.CarrierGround {
+			t.Fatalf("return label = %s/%s/%s", got.Purpose(), got.ReturnAuthorizationID(), got.Carrier())
+		}
+	}},
+	{"find by return package returns the label, a miss is ErrNotFound", func(t *testing.T, f Fixture) {
+		ctx := context.Background()
+		l := NewReturnLabel(t, 1)
+		noErr(t, f.Labels.Save(ctx, l))
+		got, err := f.Labels.FindByReturnPackage(ctx, "ret-1", 1)
+		noErr(t, err)
+		if got.Ref() != l.Ref() {
+			t.Fatalf("found %s", got.Ref())
+		}
+		_, err = f.Labels.FindByReturnPackage(ctx, "ret-1", 2)
+		wantErr(t, err, ports.ErrNotFound)
+		_, err = f.Labels.FindByReturnPackage(ctx, "ret-9", 1)
+		wantErr(t, err, ports.ErrNotFound)
+		// An outbound label is never found by the return lookup.
+		p := Seed(t, f, 1)
+		_, err = f.Labels.FindByReturnPackage(ctx, p.Label.PONumber(), 1)
+		wantErr(t, err, ports.ErrNotFound)
+	}},
+	{"a second return label for one (authorization, packageNo) is ErrLabelAlreadyIssued", func(t *testing.T, f Fixture) {
+		ctx := context.Background()
+		l := NewReturnLabel(t, 1)
+		noErr(t, f.Labels.Save(ctx, l))
+		twin, _, err := label.Issue(label.NewLabel{
+			Ref: "lbl-ret-twin", TrackingNumber: "RNRETTWIN0000001", PackageNo: 1, OrderID: testOrderID,
+			Purpose: label.PurposeReturn, ReturnAuthorizationID: l.ReturnAuthorizationID(), Tier: shared.TierStandard,
+			StopKey: l.StopKey(), DestinationPostalPrefix: "01310",
+		}, T0)
+		noErr(t, err)
+		wantErr(t, f.Labels.Save(ctx, twin), label.ErrLabelAlreadyIssued)
+		// A second package of the same authorization is a different label.
+		second, _, err := label.Issue(label.NewLabel{
+			Ref: "lbl-ret-second", TrackingNumber: "RNRETSECOND00001", PackageNo: 2, OrderID: testOrderID,
+			Purpose: label.PurposeReturn, ReturnAuthorizationID: l.ReturnAuthorizationID(), Tier: shared.TierStandard,
+			StopKey: l.StopKey(), DestinationPostalPrefix: "01310",
+		}, T0)
+		noErr(t, err)
+		noErr(t, f.Labels.Save(ctx, second))
+		// A return of another authorization shares no identity with this one.
+		other := NewReturnLabel(t, 2)
+		noErr(t, f.Labels.Save(ctx, other))
+	}},
+	{"a voided return label keeps its purpose", func(t *testing.T, f Fixture) {
+		ctx := context.Background()
+		l := NewReturnLabel(t, 1)
+		noErr(t, f.Labels.Save(ctx, l))
+		_, err := l.Void("never shipped", Hour(1))
+		noErr(t, err)
+		noErr(t, f.Labels.Save(ctx, l))
+		got, err := f.Labels.Get(ctx, l.Ref())
+		noErr(t, err)
+		if got.Status() != label.StatusVoided || got.Purpose() != label.PurposeReturn {
+			t.Fatalf("voided return label = %s/%s", got.Status(), got.Purpose())
+		}
+	}},
 }
 
 var snapshotCases = []named{

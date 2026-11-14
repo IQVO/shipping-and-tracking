@@ -56,6 +56,21 @@ func Seed(t testing.TB, f Fixture, n int) Pair {
 	return p
 }
 
+// NewReturnLabel builds (without storing) the RETURN label number n of
+// authorization ret-n: no purchase order, no assignment, ground carrier
+// (ADR 0017).
+func NewReturnLabel(t testing.TB, n int) *label.ShippingLabel {
+	t.Helper()
+	l, _, err := label.Issue(label.NewLabel{
+		Ref: label.Ref(fmt.Sprintf("lbl-ret-%d", n)), TrackingNumber: shared.TrackingNumber(fmt.Sprintf("RNR%014d", n)),
+		PackageNo: 1, OrderID: fmt.Sprintf("ord-%d", n), Purpose: label.PurposeReturn,
+		ReturnAuthorizationID: fmt.Sprintf("ret-%d", n), Tier: shared.TierStandard,
+		StopKey: strings.Repeat("ab", label.StopKeyLen/2), DestinationPostalPrefix: "01310",
+	}, T0)
+	noErr(t, err)
+	return l
+}
+
 // Scan applies one scan at hour h to j, failing the test on any error.
 func Scan(t testing.TB, j *journey.Journey, id string, typ journey.ScanType, h int) {
 	t.Helper()

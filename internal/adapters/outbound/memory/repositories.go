@@ -30,11 +30,22 @@ func (r *LabelRepository) Get(ctx context.Context, ref label.Ref) (*label.Shippi
 func (r *LabelRepository) FindByPackage(ctx context.Context, poNumber string, packageNo int) (*label.ShippingLabel, error) {
 	defer r.s.enter(ctx)()
 	for _, snap := range r.s.st.labels {
-		if snap.PONumber == poNumber && snap.PackageNo == packageNo {
+		if snap.Purpose == label.PurposeOutbound && snap.PONumber == poNumber && snap.PackageNo == packageNo {
 			return label.Restore(snap)
 		}
 	}
 	return nil, fmt.Errorf("%w: label of package %d of %s", ports.ErrNotFound, packageNo, poNumber)
+}
+
+// FindByReturnPackage implements ports.LabelRepository.
+func (r *LabelRepository) FindByReturnPackage(ctx context.Context, returnAuthorizationID string, packageNo int) (*label.ShippingLabel, error) {
+	defer r.s.enter(ctx)()
+	for _, snap := range r.s.st.labels {
+		if snap.Purpose == label.PurposeReturn && snap.ReturnAuthorizationID == returnAuthorizationID && snap.PackageNo == packageNo {
+			return label.Restore(snap)
+		}
+	}
+	return nil, fmt.Errorf("%w: return label of package %d of %s", ports.ErrNotFound, packageNo, returnAuthorizationID)
 }
 
 // Save implements ports.LabelRepository.
@@ -50,8 +61,8 @@ func (r *LabelRepository) Save(ctx context.Context, l *label.ShippingLabel) erro
 		return nil
 	}
 	for _, other := range r.s.st.labels {
-		if other.PONumber == snap.PONumber && other.PackageNo == snap.PackageNo {
-			return fmt.Errorf("%w: package %d of %s", label.ErrLabelAlreadyIssued, snap.PackageNo, snap.PONumber)
+		if samePackage(other, snap) {
+			return fmt.Errorf("%w: package %d of %s", label.ErrLabelAlreadyIssued, snap.PackageNo, packageIdentity(snap))
 		}
 		if other.TrackingNumber == snap.TrackingNumber {
 			return fmt.Errorf("%w: %s", label.ErrTrackingNumberTaken, snap.TrackingNumber)
@@ -59,6 +70,29 @@ func (r *LabelRepository) Save(ctx context.Context, l *label.ShippingLabel) erro
 	}
 	r.s.st.labels[snap.Ref] = snap
 	return nil
+}
+
+// packageIdentity names the package identity of a label in error messages:
+// the purchase order of an outbound label, the return authorization of a
+// reverse one (ADR 0017).
+func packageIdentity(s label.Snapshot) string {
+	if s.Purpose == label.PurposeReturn {
+		return s.ReturnAuthorizationID
+	}
+	return s.PONumber
+}
+
+// samePackage reports whether two labels claim the same package: one
+// (poNumber, packageNo) outbound, one (returnAuthorizationId, packageNo)
+// return.
+func samePackage(a, b label.Snapshot) bool {
+	if a.PackageNo != b.PackageNo {
+		return false
+	}
+	if a.Purpose == label.PurposeReturn || b.Purpose == label.PurposeReturn {
+		return a.Purpose == b.Purpose && a.ReturnAuthorizationID == b.ReturnAuthorizationID
+	}
+	return a.PONumber == b.PONumber
 }
 
 // ShipToSnapshots is the in-memory ports.ShipToSnapshots.
