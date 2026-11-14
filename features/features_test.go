@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,9 @@ import (
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
 
-// TestFeatures runs every Gherkin feature in this directory.
+// TestFeatures runs every Gherkin feature in this directory. BDD_TAGS narrows
+// the run to a tag expression (for example BDD_TAGS=@rules for the
+// documentation-derived scenarios alone); empty runs everything.
 func TestFeatures(t *testing.T) {
 	suite := godog.TestSuite{
 		ScenarioInitializer: InitializeScenario,
@@ -35,6 +38,7 @@ func TestFeatures(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"."},
 			Strict:   true,
+			Tags:     os.Getenv("BDD_TAGS"),
 			TestingT: t,
 		},
 	}
@@ -103,6 +107,8 @@ func slug(err error) string {
 		return "illegal-transition"
 	case errors.Is(err, shared.ErrValidation):
 		return "validation-failed"
+	case errors.Is(err, shipto.ErrAddressSuspect):
+		return "address-suspect"
 	case errors.Is(err, ports.ErrShipToUnavailable):
 		return "ship-to-unavailable"
 	case errors.Is(err, ports.ErrNotFound):
@@ -480,4 +486,5 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 
 	registerOpenHostSteps(sc, w)
 	registerEtaSteps(sc, w)
+	registerRuleSteps(sc, w)
 }
