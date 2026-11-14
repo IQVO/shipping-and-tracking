@@ -35,6 +35,9 @@ type shipping-and-tracking publishes, followed by the types it consumes.
 - No `data` of any event carries a ship-to address or a part of it. `stopKey` (an
   opaque keyed hash) and `destinationPostalPrefix` on `LabelIssued` are the only
   values derived from the address (ADR 0002 A9, A10).
+- `LabelIssued` carries two optional fields on a reverse label only - `purpose`
+  (`RETURN`) and `returnAuthorizationId` - omitted on an outbound label; the
+  payload change is additive, so the dataschema stays `:v1` (ADR 0017).
 
 ### Published types
 

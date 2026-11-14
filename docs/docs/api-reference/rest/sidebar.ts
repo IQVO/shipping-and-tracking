@@ -22,6 +22,12 @@ const sidebar: SidebarsConfig = {
         },
         {
           type: "doc",
+          id: "api-reference/rest/issue-return-label",
+          label: "Issue the reverse label of one package of a return (IssueReturnLabel)",
+          className: "api-method post",
+        },
+        {
+          type: "doc",
           id: "api-reference/rest/void-label",
           label: "Void an issued label (VoidLabel)",
           className: "api-method post",

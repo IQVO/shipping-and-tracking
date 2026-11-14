@@ -10,6 +10,7 @@ paths:
 Routes to use cases, kept in sync with `apis/openapi.yaml` by hand (Spectral lints the document, nothing lints this list).
 
 - `POST /labels` -> `IssueLabel` (201; 409 `label-already-issued` / `tracking-number-taken` / `concurrent-update`; 422; 503 `ship-to-unavailable`)
+- `POST /return-labels` -> `IssueReturnLabel` (201; 409 `label-already-issued` (one per (returnAuthorizationId, packageNo)) / `tracking-number-taken` / `concurrent-update`; 422; 503 `ship-to-unavailable`; ADR 0017)
 - `POST /labels/{labelRef}/voids` -> `VoidLabel` (200; 404; 409 `void-after-handover`; 422)
 - `GET /journeys/{trackingNumber}` -> `GetJourney` (200; 404)
 - `POST /journeys/{trackingNumber}/scans` -> `RecordScan` (200; 404; 409 `duplicate-scan` / `scan-out-of-order` / `illegal-transition` / `journey-closed`; 422)
