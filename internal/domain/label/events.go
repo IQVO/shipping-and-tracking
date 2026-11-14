@@ -6,7 +6,8 @@ const entity = "label"
 
 // LabelIssued is raised by Issue. Its fields are the model's data list plus
 // orderId (ADR 0002 A12), stopKey and destinationPostalPrefix (E10). It never
-// carries an address.
+// carries an address. purpose and returnAuthorizationId appear only on a
+// reverse label and are omitted on an outbound one (ADR 0017).
 type LabelIssued struct {
 	shared.Header
 	LabelRef                Ref
@@ -15,6 +16,8 @@ type LabelIssued struct {
 	AssignmentID            string
 	OrderID                 string
 	PackageNo               int
+	Purpose                 Purpose
+	ReturnAuthorizationID   string
 	Tier                    shared.Tier
 	Carrier                 string
 	StopKey                 string
