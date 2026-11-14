@@ -185,6 +185,12 @@ func factScan(eventID string, f Fact, j *journey.Journey) journey.ScanInput {
 	if f.PickupIfLabelled && j.State() == journey.StateLabelled {
 		typ = journey.ScanPickupDeparture
 	}
+	// A DELIVERED attempt at a pickup point deposits the package at the
+	// point, not at a doorstep (ADR 0016); a FAILED attempt keeps
+	// DELIVERY_FAILED and rides back with the route.
+	if typ == journey.ScanDelivered && j.PickupPointID() != "" {
+		typ = journey.ScanPointDeposited
+	}
 	if node == "" {
 		node = j.LastNodeID()
 	}

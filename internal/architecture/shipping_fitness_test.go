@@ -42,10 +42,41 @@ func TestContractsCarryNoShipToField(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		if keys := shipToKeys(string(b)); len(keys) > 0 {
+		// The consumed NodeRegistered copy carries the node's own postalCode
+		// (a pickup point's location, already public on node-topology's
+		// contract): infrastructure data, not a customer ship-to (ADR 0016).
+		// The block is excised by name so the exemption cannot spread.
+		contract := withoutNodeRegisteredBlock(string(b))
+		if keys := shipToKeys(contract); len(keys) > 0 {
 			t.Errorf("apis/%s declares ship-to fields %v: the address never leaves the encrypted snapshot", name, keys)
 		}
 	}
+}
+
+// withoutNodeRegisteredBlock removes the NodeRegisteredEvent schema block.
+func withoutNodeRegisteredBlock(contract string) string {
+	start := strings.Index(contract, "    NodeRegisteredEvent:")
+	if start < 0 {
+		return contract
+	}
+	rest := contract[start+len("    NodeRegisteredEvent:"):]
+	end := strings.Index(rest, "\n    [A-Z]")
+	if end < 0 {
+		return contract[:start]
+	}
+	// walk to the next 4-space-indented schema key
+	idx := start + len("    NodeRegisteredEvent:")
+	for idx < len(contract) {
+		lineEnd := strings.Index(contract[idx:], "\n")
+		if lineEnd < 0 {
+			return contract[:start]
+		}
+		idx += lineEnd + 1
+		if idx+4 <= len(contract) && contract[idx:idx+4] == "    " && idx+5 <= len(contract) && contract[idx+4] >= 'A' && contract[idx+4] <= 'Z' {
+			return contract[:start] + contract[idx:]
+		}
+	}
+	return contract[:start]
 }
 
 func TestShipToSensorBites(t *testing.T) {

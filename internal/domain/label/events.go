@@ -19,6 +19,8 @@ type LabelIssued struct {
 	Carrier                 string
 	StopKey                 string
 	DestinationPostalPrefix string
+	// PickupPointID is empty on a ship-to label (ADR 0016).
+	PickupPointID string
 }
 
 // EventName returns "LabelIssued".

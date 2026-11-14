@@ -31,6 +31,9 @@ data:
   {{- with .Values.config.silenceSweepInterval }}
   SILENCE_SWEEP_INTERVAL: {{ . | quote }}
   {{- end }}
+  {{- with .Values.config.pickupHoldDays }}
+  PICKUP_HOLD_DAYS: {{ . | quote }}
+  {{- end }}
   {{- with .Values.config.housekeepingInterval }}
   HOUSEKEEPING_INTERVAL: {{ . | quote }}
   {{- end }}

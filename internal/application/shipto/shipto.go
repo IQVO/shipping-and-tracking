@@ -31,7 +31,16 @@ type Address struct {
 	PostalCode  string `json:"postalCode"`
 	CountryCode string `json:"countryCode"`
 	Phone       string `json:"phone,omitempty"`
+	// DestinationKind and PickupPointID carry customer-ordering's pickup
+	// destination (ADR 0016): PICKUP_POINT answers with the point and NO
+	// address fields; the absent kind is SHIP_TO, the shape of every order
+	// today.
+	DestinationKind string `json:"destinationKind,omitempty"`
+	PickupPointID   string `json:"pickupPointId,omitempty"`
 }
+
+// Pickup reports whether the order's destination is the named pickup point.
+func (a Address) Pickup() bool { return a.DestinationKind == "PICKUP_POINT" && a.PickupPointID != "" }
 
 // String redacts the address.
 func (Address) String() string { return "[ship-to redacted]" }
@@ -88,6 +97,11 @@ func (q AddressQuality) Suspect() bool { return q.Verdict == VerdictSuspect }
 // ErrAddressSuspect is the label-issuance refusal for a suspect address
 // (422 address-suspect). The wrapped detail names reason tokens only.
 var ErrAddressSuspect = errors.New("ship-to address suspect")
+
+// ErrPickupPointUnavailable is the label-issuance refusal when the named
+// pickup point is unknown to the local view, retired or not ACTIVE
+// (422 pickup-point-unavailable, ADR 0016).
+var ErrPickupPointUnavailable = errors.New("pickup point unavailable")
 
 // placeholderValues carry no deliverable information. An address whose
 // recipient, line or city reduces (Alnum) to one of them passes Validate

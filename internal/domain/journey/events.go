@@ -62,6 +62,49 @@ type PackageDelivered struct {
 // EventName returns "PackageDelivered".
 func (PackageDelivered) EventName() string { return "PackageDelivered" }
 
+// PackageReadyForCollection is raised when the wave deposits a pickup journey's
+// package at its point (ADR 0016). HoldUntil is the retention deadline the
+// sweep returns the package after.
+type PackageReadyForCollection struct {
+	shared.Header
+	TrackingNumber       TrackingNumber
+	AssignmentID         string
+	OrderID              string
+	PickupPointID        string
+	ReadyForCollectionAt time.Time
+	HoldUntil            time.Time
+}
+
+// EventName returns "PackageReadyForCollection".
+func (PackageReadyForCollection) EventName() string { return "PackageReadyForCollection" }
+
+// PackageCollected is raised when the shopper collects the package (ADR 0016).
+// ProofCode is empty when no proof was taken.
+type PackageCollected struct {
+	shared.Header
+	TrackingNumber TrackingNumber
+	AssignmentID   string
+	OrderID        string
+	PickupPointID  string
+	CollectedAt    time.Time
+	ProofCode      string
+}
+
+// EventName returns "PackageCollected".
+func (PackageCollected) EventName() string { return "PackageCollected" }
+
+// Entity returns "journey".
+func (PackageReadyForCollection) Entity() string { return entity }
+
+// SubjectID returns the trackingNumber.
+func (e PackageReadyForCollection) SubjectID() string { return string(e.TrackingNumber) }
+
+// Entity returns "journey".
+func (PackageCollected) Entity() string { return entity }
+
+// SubjectID returns the trackingNumber.
+func (e PackageCollected) SubjectID() string { return string(e.TrackingNumber) }
+
 // Entity returns "journey".
 func (PackageDelivered) Entity() string { return entity }
 
@@ -116,6 +159,9 @@ type PackageReturned struct {
 	TrackingNumber TrackingNumber
 	OrderID        string
 	ReturnedAt     time.Time
+	// Reason names why the package returned; UNCOLLECTED is the pickup hold
+	// expiry (ADR 0016). Empty on the station-initiated return.
+	Reason string
 }
 
 // EventName returns "PackageReturned".

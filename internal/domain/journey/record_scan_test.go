@@ -66,9 +66,12 @@ var legalEdges = map[ScanType]map[State]State{
 	ScanOutForDelivery:    {StateAtStation: StateOutForDelivery, StateWithCarrier: StateOutForDelivery},
 	ScanDelivered:         {StateOutForDelivery: StateDelivered},
 	ScanDeliveryFailed:    {StateOutForDelivery: StateAtStation},
+	// The pickup pair of ADR 0016.
+	ScanPointDeposited: {StateOutForDelivery: StateReadyForCollection},
+	ScanCollected:      {StateReadyForCollection: StateCollected},
 }
 
-var openStates = []State{StateLabelled, StateHandedOver, StateInTransit, StateAtStation, StateWithCarrier, StateOutForDelivery}
+var openStates = []State{StateLabelled, StateHandedOver, StateInTransit, StateAtStation, StateWithCarrier, StateOutForDelivery, StateReadyForCollection}
 
 func TestEveryScanTypeAgainstEveryOpenState(t *testing.T) {
 	for _, typ := range AllScanTypes() {

@@ -27,7 +27,10 @@ func Restore(s Snapshot) (*Journey, error) {
 		deliveredAt: shared.UTC(s.DeliveredAt), closedAt: shared.UTC(s.ClosedAt),
 		lastExceptedAt: shared.UTC(s.LastExceptionAt), etaStart: shared.UTC(s.EtaStart), etaEnd: shared.UTC(s.EtaEnd),
 		etaAssignedAt: shared.UTC(s.EtaAssignedAt), pointFlagReason: s.PointFlagReason, pointFlaggedAt: shared.UTC(s.PointFlaggedAt),
-		chosenCarrierID: s.ChosenCarrierID, handoffNodeID: s.HandoffNodeID, areaVersion: s.AreaVersion, version: s.Version,
+		chosenCarrierID: s.ChosenCarrierID, handoffNodeID: s.HandoffNodeID, areaVersion: s.AreaVersion,
+		destinationKind: s.DestinationKind, pickupPointID: s.PickupPointID,
+		readyForCollectionAt: shared.UTC(s.ReadyForCollectionAt), holdUntil: shared.UTC(s.HoldUntil),
+		collectedAt: shared.UTC(s.CollectedAt), version: s.Version,
 	}, nil
 }
 
@@ -57,7 +60,33 @@ func checkSnapshot(s Snapshot) error {
 	if err := checkCarrierChoice(s.ChosenCarrierID, s.HandoffNodeID, s.AreaVersion); err != nil {
 		return err
 	}
+	if err := checkPickup(s); err != nil {
+		return err
+	}
 	return checkPointFlag(s)
+}
+
+// checkPickup: the pickup pair is all or nothing - a PICKUP_POINT journey has
+// a valid point id and a hold deadline, a ship-to journey carries none of the
+// three (ADR 0016).
+func checkPickup(s Snapshot) error {
+	pickup := s.DestinationKind == destinationPickupPoint
+	if s.DestinationKind != "" && s.DestinationKind != destinationShipTo && !pickup {
+		return fmt.Errorf("destinationKind %q is not a destination kind", s.DestinationKind)
+	}
+	if !pickup {
+		if s.PickupPointID != "" || !s.HoldUntil.IsZero() || !s.ReadyForCollectionAt.IsZero() || !s.CollectedAt.IsZero() {
+			return errors.New("a ship-to journey carries no pickup fields")
+		}
+		return nil
+	}
+	if !shared.ValidID(s.PickupPointID) || s.HoldUntil.IsZero() {
+		return errors.New("a pickup journey needs a pickupPointId and a holdUntil")
+	}
+	if !s.CollectedAt.IsZero() && s.ReadyForCollectionAt.IsZero() {
+		return errors.New("a collected journey was ready for collection first")
+	}
+	return nil
 }
 
 // checkPointFlag: the two flag fields are both zero or both set, and the
@@ -150,6 +179,11 @@ func checkClosing(s Snapshot, end State) error {
 	want := s.State
 	if from, ok := closing[s.State]; ok {
 		want = from
+	}
+	// A returned PICKUP journey closed from READY_FOR_COLLECTION - the
+	// uncollected hold (ADR 0016), not a station-initiated return.
+	if s.State == StateReturned && s.PickupPointID != "" {
+		want = StateReadyForCollection
 	}
 	if end != want {
 		return fmt.Errorf("state %s is not reachable by the applied scans (they end in %s)", s.State, end)

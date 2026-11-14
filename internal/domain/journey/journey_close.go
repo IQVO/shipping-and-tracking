@@ -36,6 +36,22 @@ func (j *Journey) ReturnToSender(returnedAt, now time.Time) ([]shared.Event, err
 	}}, nil
 }
 
+// ReturnUncollected returns a READY_FOR_COLLECTION journey to the sender
+// after the pickup hold expired (ADR 0016): the uncollected package re-enters
+// the network as reverse freight.
+func (j *Journey) ReturnUncollected(returnedAt, now time.Time) ([]shared.Event, error) {
+	if err := j.closeFrom(StateReadyForCollection, StateReturned, now); err != nil {
+		return nil, err
+	}
+	return []shared.Event{PackageReturned{
+		Header: shared.Header{Version: j.version, At: shared.UTC(now)}, TrackingNumber: j.tracking,
+		OrderID: j.orderID, ReturnedAt: shared.UTC(returnedAt), Reason: ReasonUncollected,
+	}}, nil
+}
+
+// ReasonUncollected is the return reason of an expired pickup hold (ADR 0016).
+const ReasonUncollected = "UNCOLLECTED"
+
 // DeclareLost moves an IN_TRANSIT journey to LOST (DeclareLost).
 func (j *Journey) DeclareLost(declaredAt, now time.Time) ([]shared.Event, error) {
 	if err := j.closeFrom(StateInTransit, StateLost, now); err != nil {

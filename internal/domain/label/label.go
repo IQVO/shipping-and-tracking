@@ -68,21 +68,22 @@ func CarrierFor(t shared.Tier) string {
 
 // ShippingLabel is the aggregate root.
 type ShippingLabel struct {
-	ref          Ref
-	tracking     shared.TrackingNumber
-	poNumber     string
-	packageNo    int
-	assignmentID string
-	orderID      string
-	tier         shared.Tier
-	carrier      string
-	stopKey      string
-	postalPrefix string
-	status       Status
-	issuedAt     time.Time
-	voidReason   string
-	voidedAt     time.Time
-	version      int64
+	ref           Ref
+	tracking      shared.TrackingNumber
+	poNumber      string
+	packageNo     int
+	assignmentID  string
+	orderID       string
+	tier          shared.Tier
+	carrier       string
+	stopKey       string
+	pickupPointID string
+	postalPrefix  string
+	status        Status
+	issuedAt      time.Time
+	voidReason    string
+	voidedAt      time.Time
+	version       int64
 }
 
 // Snapshot is the persisted form of a label. Restore validates it.
@@ -97,6 +98,7 @@ type Snapshot struct {
 	Carrier                 string
 	StopKey                 string
 	DestinationPostalPrefix string
+	PickupPointID           string
 	Status                  Status
 	IssuedAt                time.Time
 	VoidReason              string
@@ -115,6 +117,9 @@ type NewLabel struct {
 	Tier                    shared.Tier
 	StopKey                 string
 	DestinationPostalPrefix string
+	// PickupPointID is set when the label serves a pickup destination (ADR
+	// 0016); a ship-to label carries none.
+	PickupPointID string
 }
 
 func checkNew(in NewLabel) error {
@@ -190,13 +195,14 @@ func Issue(in NewLabel, now time.Time) (*ShippingLabel, []shared.Event, error) {
 	l := &ShippingLabel{
 		ref: in.Ref, tracking: in.TrackingNumber, poNumber: in.PONumber, packageNo: in.PackageNo,
 		assignmentID: in.AssignmentID, orderID: in.OrderID, tier: in.Tier, carrier: CarrierFor(in.Tier),
-		stopKey: in.StopKey, postalPrefix: in.DestinationPostalPrefix, status: StatusIssued,
+		stopKey: in.StopKey, postalPrefix: in.DestinationPostalPrefix, pickupPointID: in.PickupPointID, status: StatusIssued,
 		issuedAt: shared.UTC(now), version: 1,
 	}
 	ev := LabelIssued{
 		Header: shared.Header{Version: l.version, At: l.issuedAt}, LabelRef: l.ref, TrackingNumber: l.tracking,
 		PONumber: l.poNumber, AssignmentID: l.assignmentID, OrderID: l.orderID, PackageNo: l.packageNo,
 		Tier: l.tier, Carrier: l.carrier, StopKey: l.stopKey, DestinationPostalPrefix: l.postalPrefix,
+		PickupPointID: l.pickupPointID,
 	}
 	return l, []shared.Event{ev}, nil
 }
@@ -229,7 +235,7 @@ func Restore(s Snapshot) (*ShippingLabel, error) {
 	return &ShippingLabel{
 		ref: s.Ref, tracking: s.TrackingNumber, poNumber: s.PONumber, packageNo: s.PackageNo,
 		assignmentID: s.AssignmentID, orderID: s.OrderID, tier: s.Tier, carrier: s.Carrier,
-		stopKey: s.StopKey, postalPrefix: s.DestinationPostalPrefix, status: s.Status,
+		stopKey: s.StopKey, postalPrefix: s.DestinationPostalPrefix, pickupPointID: s.PickupPointID, status: s.Status,
 		issuedAt: shared.UTC(s.IssuedAt), voidReason: s.VoidReason, voidedAt: shared.UTC(s.VoidedAt), version: s.Version,
 	}, nil
 }

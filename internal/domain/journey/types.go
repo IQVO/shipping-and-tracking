@@ -9,26 +9,29 @@ import (
 // State is the position of a package on its journey.
 type State string
 
-// The ten journey states: the model's eight plus VOIDED (ADR 0002 A13) plus
-// WITH_CARRIER (ADR 0015).
+// The twelve journey states: the model's eight plus VOIDED (ADR 0002 A13),
+// WITH_CARRIER (ADR 0015) and the pickup pair (ADR 0016).
 const (
-	StateLabelled       State = "LABELLED"
-	StateHandedOver     State = "HANDED_OVER"
-	StateInTransit      State = "IN_TRANSIT"
-	StateAtStation      State = "AT_STATION"
-	StateWithCarrier    State = "WITH_CARRIER"
-	StateOutForDelivery State = "OUT_FOR_DELIVERY"
-	StateDelivered      State = "DELIVERED"
-	StateReturned       State = "RETURNED"
-	StateLost           State = "LOST"
-	StateVoided         State = "VOIDED"
+	StateLabelled           State = "LABELLED"
+	StateHandedOver         State = "HANDED_OVER"
+	StateInTransit          State = "IN_TRANSIT"
+	StateAtStation          State = "AT_STATION"
+	StateWithCarrier        State = "WITH_CARRIER"
+	StateOutForDelivery     State = "OUT_FOR_DELIVERY"
+	StateReadyForCollection State = "READY_FOR_COLLECTION"
+	StateDelivered          State = "DELIVERED"
+	StateCollected          State = "COLLECTED"
+	StateReturned           State = "RETURNED"
+	StateLost               State = "LOST"
+	StateVoided             State = "VOIDED"
 )
 
-// Valid reports whether s is one of the ten states.
+// Valid reports whether s is one of the twelve states.
 func (s State) Valid() bool {
 	switch s {
 	case StateLabelled, StateHandedOver, StateInTransit, StateAtStation, StateWithCarrier,
-		StateOutForDelivery, StateDelivered, StateReturned, StateLost, StateVoided:
+		StateOutForDelivery, StateReadyForCollection, StateDelivered, StateCollected,
+		StateReturned, StateLost, StateVoided:
 		return true
 	}
 	return false
@@ -37,7 +40,7 @@ func (s State) Valid() bool {
 // Terminal reports whether no command may change a journey in state s.
 func (s State) Terminal() bool {
 	switch s {
-	case StateDelivered, StateReturned, StateLost, StateVoided:
+	case StateDelivered, StateCollected, StateReturned, StateLost, StateVoided:
 		return true
 	}
 	return false
@@ -57,6 +60,10 @@ const (
 	ScanOutForDelivery    ScanType = "OUT_FOR_DELIVERY"
 	ScanDelivered         ScanType = "DELIVERED"
 	ScanDeliveryFailed    ScanType = "DELIVERY_FAILED"
+	// The pickup pair of ADR 0016: the wave deposits the package at the
+	// point; the shopper collects it.
+	ScanPointDeposited ScanType = "POINT_DEPOSITED"
+	ScanCollected      ScanType = "COLLECTED"
 )
 
 // AllScanTypes lists the nine scan types in a stable order.
@@ -64,6 +71,7 @@ func AllScanTypes() []ScanType {
 	return []ScanType{
 		ScanShipmentConfirmed, ScanPickupDeparture, ScanDeparture, ScanTransitArrival,
 		ScanStationArrival, ScanCarrierHandoff, ScanOutForDelivery, ScanDelivered, ScanDeliveryFailed,
+		ScanPointDeposited, ScanCollected,
 	}
 }
 
@@ -97,6 +105,13 @@ func next(t ScanType, from State, carrier bool) (State, bool) {
 		return StateWithCarrier, from == StateAtStation
 	case ScanOutForDelivery:
 		return StateOutForDelivery, from == StateAtStation || from == StateWithCarrier
+	case ScanPointDeposited:
+		// The wave's DELIVERED attempt at a point deposits the package
+		// (ADR 0016); a FAILED attempt keeps the package on the route back
+		// to the station through ScanDeliveryFailed.
+		return StateReadyForCollection, from == StateOutForDelivery
+	case ScanCollected:
+		return StateCollected, from == StateReadyForCollection
 	case ScanDelivered:
 		return StateDelivered, from == StateOutForDelivery
 	case ScanDeliveryFailed:
