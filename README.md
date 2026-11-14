@@ -61,8 +61,8 @@ internal/
     outbound/memory/         test doubles only (cmd/** never imports them, fitness-tested)
   architecture/              the fitness tests below
 apis/                        openapi.yaml (REST) + asyncapi.yaml (events)
-docs/adr/                    10 ADRs + index
-features/                    8 godog feature files
+docs/adr/                    16 ADRs + index
+features/                    14 godog feature files
 charts/shipping-and-tracking/ the Helm chart
 web/                         the shipping_mfe console remote
 ```
@@ -194,7 +194,7 @@ make mutation       # gremlins over every internal/domain package
 ## Tests
 
 - **Unit**: `make test` — domain, use cases, handlers, adapters (race-enabled).
-- **BDD**: `make bdd` — godog scenarios in `features/` (8 feature files).
+- **BDD**: `make bdd` — godog scenarios in `features/` (14 feature files).
 - **Integration**: `make integration` — testcontainers Postgres + Kafka, including the real-wiring test of `cmd/api`.
 - **Mutation**: `make mutation` (blocking subset) / `make mutation-full` — gremlins over every `internal/domain` package.
 - **Architecture fitness**: `make arch-test` — `internal/architecture/`.
@@ -204,7 +204,7 @@ CI (`.github/workflows/ci.yml`) runs `lint`, `guide-lint`, `complexity`, `test`,
 
 ## Architecture Decision Records
 
-[docs/adr/](docs/adr/index.md) — index plus 10 ADRs (0001–0010: bounded context, aggregates and invariants, consumed contracts and local read models, CloudEvents envelope and type catalogue, runtime configuration/jobs and retention, MCP server adoption, console remote, fleet observability standard, A2A inbound adapter, fleet REST API guideline).
+[docs/adr/](docs/adr/index.md) — index plus 16 ADRs (0001–0016: bounded context, aggregates and invariants, consumed contracts and local read models, CloudEvents envelope and type catalogue, runtime configuration/jobs and retention, MCP server adoption, console remote, fleet observability standard, A2A inbound adapter, fleet REST API guideline, label-time address deliverability check, analytics read side, day-of ETA window on the journey, delivery-point flag relayed by order id, carrier handoff and carrier-events webhook, pickup collection).
 
 ## License
 
