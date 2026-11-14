@@ -225,7 +225,8 @@ func (s stack) apply(t *testing.T) {
 		"CUSTOMER_ORDERING_URL": s.orders, "SHIP_TO_ENCRYPTION_KEY": testKey, "STOP_KEY_SECRET": "e2e-stop-key-secret",
 		"VENDOR_CONSUMER_GROUP": "sat-vendor-e2e", "LINEHAUL_CONSUMER_GROUP": "sat-linehaul-e2e",
 		"LASTMILE_CONSUMER_GROUP": "sat-lastmile-e2e", "CATALOG_CONSUMER_GROUP": "sat-catalog-e2e",
-		"HTTP_ADDR": s.addr, "SHUTDOWN_DRAIN_DELAY": "0", "OUTBOX_RELAY_INTERVAL": "200ms", "SILENCE_SWEEP_INTERVAL": "1h",
+		"ST_AREAS_CONSUMER_GROUP": "sat-areas-e2e",
+		"HTTP_ADDR":               s.addr, "SHUTDOWN_DRAIN_DELAY": "0", "OUTBOX_RELAY_INTERVAL": "200ms", "SILENCE_SWEEP_INTERVAL": "1h",
 		"HOUSEKEEPING_INTERVAL": "1h", "LOG_LEVEL": "warn",
 	} {
 		t.Setenv(k, v)

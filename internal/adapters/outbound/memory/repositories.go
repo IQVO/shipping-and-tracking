@@ -124,6 +124,41 @@ func (r *JourneyRepository) Save(ctx context.Context, j *journey.Journey) error 
 	return nil
 }
 
+// ListUncollected implements ports.JourneyRepository (ADR 0016).
+func (r *JourneyRepository) ListUncollected(ctx context.Context, f repository.UncollectedFilter) ([]*journey.Journey, error) {
+	defer r.s.enter(ctx)()
+	var snaps []journey.Snapshot
+	for _, s := range r.s.st.journeys {
+		if s.State != journey.StateReadyForCollection || s.HoldUntil.IsZero() || !s.HoldUntil.Before(f.Before) {
+			continue
+		}
+		if !f.After.HoldUntil.IsZero() &&
+			(!s.HoldUntil.After(f.After.HoldUntil) ||
+				(s.HoldUntil.Equal(f.After.HoldUntil) && string(s.TrackingNumber) <= f.After.TrackingNumber)) {
+			continue
+		}
+		snaps = append(snaps, s)
+	}
+	sort.Slice(snaps, func(a, b int) bool {
+		if !snaps[a].HoldUntil.Equal(snaps[b].HoldUntil) {
+			return snaps[a].HoldUntil.Before(snaps[b].HoldUntil)
+		}
+		return snaps[a].TrackingNumber < snaps[b].TrackingNumber
+	})
+	if f.Limit > 0 && len(snaps) > f.Limit {
+		snaps = snaps[:f.Limit]
+	}
+	out := make([]*journey.Journey, 0, len(snaps))
+	for _, s := range snaps {
+		j, err := journey.Restore(s)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, nil
+}
+
 // ListStale implements ports.JourneyRepository.
 func (r *JourneyRepository) ListStale(ctx context.Context, f repository.StaleFilter) ([]*journey.Journey, error) {
 	defer r.s.enter(ctx)()

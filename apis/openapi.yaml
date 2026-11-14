@@ -203,6 +203,53 @@ paths:
           $ref: '#/components/responses/ValidationFailed'
         '500':
           $ref: '#/components/responses/InternalError'
+  /carrier-events:
+    post:
+      tags: [Journeys]
+      operationId: reportCarrierEvent
+      summary: Report one external carrier event (ReportCarrierEvent, ADR 0015)
+      description: >-
+        The carrier webhook of CARRIER_HANDOFF service areas. Unauthenticated by
+        the standing fleet decision, exactly like POST
+        /journeys/{trackingNumber}/scans (the per-carrier token scheme is a
+        recorded follow-up). Each report becomes one scan with scanId
+        "<carrierId>:<carrierEventId>", so a re-sent report answers 409
+        duplicate-scan. PICKED_UP is the handoff at the journey's handoff node
+        (a journey already WITH_CARRIER is a no-op that answers 200);
+        OUT_FOR_DELIVERY, DELIVERED and DELIVERY_FAILED become their scans;
+        IN_TRANSIT is accepted and counted without a scan.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarrierEventRequest'
+      responses:
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyRequired'
+        '200':
+          description: The event was applied (or acknowledged without a scan); the journey after it.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Journey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: duplicate-scan (ErrDuplicateScan), scan-out-of-order (stored not applied), journey-closed (ErrJourneyClosed), illegal-transition (stored not applied), concurrent-update or idempotency-key-reused (the Idempotency-Key was already used with a different request).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /reports/package-touches:
     servers:
       - url: http://localhost:8092
@@ -371,7 +418,7 @@ components:
       enum: [ISSUED, VOIDED]
     JourneyState:
       type: string
-      enum: [LABELLED, HANDED_OVER, IN_TRANSIT, AT_STATION, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST, VOIDED]
+      enum: [LABELLED, HANDED_OVER, IN_TRANSIT, AT_STATION, WITH_CARRIER, OUT_FOR_DELIVERY, DELIVERED, RETURNED, LOST, VOIDED]
     ScanType:
       type: string
       description: >-
@@ -380,10 +427,12 @@ components:
         HANDED_OVER), DEPARTURE (HANDED_OVER or IN_TRANSIT to IN_TRANSIT),
         TRANSIT_ARRIVAL (HANDED_OVER or IN_TRANSIT to IN_TRANSIT),
         STATION_ARRIVAL (HANDED_OVER or IN_TRANSIT to AT_STATION),
-        OUT_FOR_DELIVERY (AT_STATION to OUT_FOR_DELIVERY), DELIVERED
-        (OUT_FOR_DELIVERY to DELIVERED), DELIVERY_FAILED (OUT_FOR_DELIVERY to
-        AT_STATION).
-      enum: [SHIPMENT_CONFIRMED, PICKUP_DEPARTURE, DEPARTURE, TRANSIT_ARRIVAL, STATION_ARRIVAL, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED]
+        CARRIER_HANDOFF (AT_STATION to WITH_CARRIER, ADR 0015),
+        OUT_FOR_DELIVERY (AT_STATION or WITH_CARRIER to OUT_FOR_DELIVERY),
+        DELIVERED (OUT_FOR_DELIVERY to DELIVERED), DELIVERY_FAILED
+        (OUT_FOR_DELIVERY to AT_STATION, or to WITH_CARRIER for a journey with
+        a carrier choice: the carrier re-attempts from its own custody).
+      enum: [SHIPMENT_CONFIRMED, PICKUP_DEPARTURE, DEPARTURE, TRANSIT_ARRIVAL, STATION_ARRIVAL, CARRIER_HANDOFF, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED]
     IssueLabelRequest:
       type: object
       description: In-org request (contracts-delta E2). orderId is needed for GetShipTo and for PackageDelivered.
@@ -482,6 +531,38 @@ components:
         at:
           type: string
           format: date-time
+    CarrierEventRequest:
+      type: object
+      description: "One external carrier progress report (ADR 0015). No authentication - the route is exactly as privileged as the scans route."
+      required: [carrierId, carrierEventId, trackingNumber, status, at]
+      additionalProperties: false
+      properties:
+        carrierId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        carrierEventId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The carrier's own event id; with carrierId it forms the scanId, so a re-sent report is a duplicate scan.
+        trackingNumber:
+          type: string
+          minLength: 1
+          maxLength: 64
+        status:
+          type: string
+          enum: [PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED]
+        at:
+          type: string
+          format: date-time
+          description: The observation instant; at most five minutes into the future (clock-skew allowance).
+        proofCode:
+          type: string
+          maxLength: 128
+        locationCode:
+          type: string
+          maxLength: 128
     Journey:
       type: object
       required: [trackingNumber, state, poNumber, assignmentId, orderId, tier, scans]
@@ -512,6 +593,21 @@ components:
           type: string
           format: date-time
           description: End of the day-of ETA window. Present exactly when etaStart is.
+        destinationKind:
+          type: string
+          enum: [SHIP_TO, PICKUP_POINT]
+          description: Present only on a pickup journey (ADR 0016).
+        pickupPointId:
+          type: string
+          description: The point of a pickup journey (ADR 0016).
+        readyForCollectionAt:
+          type: string
+          format: date-time
+          description: When the package reached its point (ADR 0016).
+        holdUntil:
+          type: string
+          format: date-time
+          description: The retention deadline of an uncollected package (ADR 0016).
         scans:
           type: array
           items:

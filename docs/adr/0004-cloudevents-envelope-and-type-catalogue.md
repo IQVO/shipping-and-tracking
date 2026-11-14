@@ -54,6 +54,9 @@ type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageReturned 
 type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageLost stream: events
 type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageEtaWindowAssigned stream: events
 type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageDeliveryPointFlagged stream: events
+type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageHandedToCarrier stream: events
+type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageReadyForCollection stream: events
+type: com.retailnetwork.logistics.shipping-and-tracking.journey.PackageCollected stream: events
 ```
 
 ### Consumed types

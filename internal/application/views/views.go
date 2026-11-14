@@ -65,7 +65,12 @@ type Journey struct {
 	// the journey is OUT_FOR_DELIVERY and the window is not older than the last scan.
 	EtaStart *time.Time `json:"etaStart,omitempty"`
 	EtaEnd   *time.Time `json:"etaEnd,omitempty"`
-	Scans    []Scan     `json:"scans"`
+	// The pickup pair of ADR 0016, present only on a pickup journey.
+	DestinationKind      string     `json:"destinationKind,omitempty"`
+	PickupPointID        string     `json:"pickupPointId,omitempty"`
+	ReadyForCollectionAt *time.Time `json:"readyForCollectionAt,omitempty"`
+	HoldUntil            *time.Time `json:"holdUntil,omitempty"`
+	Scans                []Scan     `json:"scans"`
 }
 
 // JourneyFrom copies a journey into its view. Scans is never nil.
@@ -87,6 +92,15 @@ func JourneyFrom(j *journey.Journey) Journey {
 	if j.EtaCurrent() {
 		start, end := j.EtaStart(), j.EtaEnd()
 		v.EtaStart, v.EtaEnd = &start, &end
+	}
+	if j.PickupPointID() != "" {
+		v.DestinationKind, v.PickupPointID = "PICKUP_POINT", j.PickupPointID()
+		if t := j.ReadyForCollectionAt(); !t.IsZero() {
+			v.ReadyForCollectionAt = &t
+		}
+		if t := j.HoldUntil(); !t.IsZero() {
+			v.HoldUntil = &t
+		}
 	}
 	return v
 }

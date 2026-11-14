@@ -23,12 +23,16 @@ data:
   LINEHAUL_CONSUMER_GROUP: {{ .Values.config.linehaulConsumerGroup | quote }}
   LASTMILE_CONSUMER_GROUP: {{ .Values.config.lastmileConsumerGroup | quote }}
   CATALOG_CONSUMER_GROUP: {{ .Values.config.catalogConsumerGroup | quote }}
+  ST_AREAS_CONSUMER_GROUP: {{ .Values.config.areasConsumerGroup | quote }}
   {{- with .Values.config.outboxRelayInterval }}
   OUTBOX_RELAY_INTERVAL: {{ . | quote }}
   {{- end }}
   OUTBOX_MAX_ATTEMPTS: {{ .Values.config.outboxMaxAttempts | quote }}
   {{- with .Values.config.silenceSweepInterval }}
   SILENCE_SWEEP_INTERVAL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.pickupHoldDays }}
+  PICKUP_HOLD_DAYS: {{ . | quote }}
   {{- end }}
   {{- with .Values.config.housekeepingInterval }}
   HOUSEKEEPING_INTERVAL: {{ . | quote }}

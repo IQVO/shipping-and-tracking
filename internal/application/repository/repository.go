@@ -3,7 +3,11 @@
 // behaviour; the interfaces are in internal/application/ports.
 package repository
 
-import "time"
+import (
+	"time"
+
+	"github.com/claudioed/shipping-and-tracking/internal/domain/journey"
+)
 
 // SealedShipTo is the encrypted ship-to snapshot of one label: AES-256-GCM
 // ciphertext with its nonce and the id of the key that sealed it. The service
@@ -30,6 +34,21 @@ type StaleFilter struct {
 	Limit  int
 }
 
+// UncollectedFilter pages the journeys the uncollected sweep may act on
+// (ADR 0016): READY_FOR_COLLECTION with a hold deadline strictly before
+// Before, at most Limit, continuing after the cursor.
+type UncollectedFilter struct {
+	Before time.Time
+	Limit  int
+	After  UncollectedCursor
+}
+
+// UncollectedCursor continues a page (hold deadline, tracking number).
+type UncollectedCursor struct {
+	HoldUntil      time.Time
+	TrackingNumber string
+}
+
 // CatalogDimensions is one row of the CatalogDimensionsView read model.
 type CatalogDimensions struct {
 	CatalogItemID string
@@ -40,4 +59,34 @@ type CatalogDimensions struct {
 	WeightG       int64
 	Hazmat        bool
 	Fragile       bool
+}
+
+// DeliveryMode of a service area (ADR 0015): NETWORK_ROUTE is the zero value,
+// so an event decoded from a producer that predates C4 means the old behaviour.
+type DeliveryMode string
+
+// The two delivery modes of a service area.
+const (
+	DeliveryModeNetworkRoute   DeliveryMode = "NETWORK_ROUTE"
+	DeliveryModeCarrierHandoff DeliveryMode = "CARRIER_HANDOFF"
+)
+
+// PickupPoint is one row of the PickupPointView read model: node-topology's
+// PICKUP_POINT nodes folded locally (ADR 0016). PostalPrefix is the point's
+// own labellable postal code.
+type PickupPoint struct {
+	ID            string
+	StationNodeID string
+	PostalPrefix  string
+	State         string
+}
+
+// AreaMode is one row of the AreaModeView read model: node-topology's
+// ServiceAreaAssigned folded locally, with the assignment version as the
+// staleness guard.
+type AreaMode struct {
+	PostalPrefix string
+	DeliveryMode DeliveryMode
+	Carriers     []journey.CarrierOption
+	Version      int64
 }

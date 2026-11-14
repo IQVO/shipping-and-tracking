@@ -29,13 +29,17 @@ func projectedKinds() map[string]report.Kind {
 }
 
 // acknowledgedTypes are this context's other published types: committed past
-// without a warning, because no report needs them (ADR 0012).
+// without a warning, because no report needs them (ADR 0012, ADR 0015).
 func acknowledgedTypes() map[string]bool {
 	return map[string]bool{
-		cloudevents.Type(entityLabel, "LabelVoided"):                true,
-		cloudevents.Type(entityJourney, "PackageHandedOver"):        true,
-		cloudevents.Type(entityJourney, "PackageExceptionRaised"):   true,
-		cloudevents.Type(entityJourney, "PackageEtaWindowAssigned"): true,
+		cloudevents.Type(entityLabel, "LabelVoided"):                   true,
+		cloudevents.Type(entityJourney, "PackageHandedOver"):           true,
+		cloudevents.Type(entityJourney, "PackageHandedToCarrier"):      true,
+		cloudevents.Type(entityJourney, "PackageExceptionRaised"):      true,
+		cloudevents.Type(entityJourney, "PackageEtaWindowAssigned"):    true,
+		cloudevents.Type(entityJourney, "PackageDeliveryPointFlagged"): true,
+		cloudevents.Type(entityJourney, "PackageReadyForCollection"):   true,
+		cloudevents.Type(entityJourney, "PackageCollected"):            true,
 	}
 }
 

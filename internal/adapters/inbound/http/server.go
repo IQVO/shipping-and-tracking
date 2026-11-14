@@ -21,19 +21,21 @@ import (
 
 // Route names of the idempotent POSTs (the idempotency_keys.route values).
 const (
-	RouteIssueLabel = "POST /labels"
-	RouteVoidLabel  = "POST /labels/{labelRef}/voids"
-	RouteRecordScan = "POST /journeys/{trackingNumber}/scans"
+	RouteIssueLabel   = "POST /labels"
+	RouteVoidLabel    = "POST /labels/{labelRef}/voids"
+	RouteRecordScan   = "POST /journeys/{trackingNumber}/scans"
+	RouteCarrierEvent = "POST /carrier-events"
 )
 
 // Server holds the use cases the handlers call.
 type Server struct {
-	IssueLabel  *usecases.IssueLabel
-	VoidLabel   *usecases.VoidLabel
-	RecordScan  *usecases.RecordScan
-	GetJourney  *usecases.GetJourney
-	Idempotency func(route string) func(http.Handler) http.Handler // nil leaves the POSTs unwrapped (handler unit tests)
-	Readiness   *Readiness                                         // nil means always ready
+	IssueLabel         *usecases.IssueLabel
+	VoidLabel          *usecases.VoidLabel
+	RecordScan         *usecases.RecordScan
+	ReportCarrierEvent *usecases.ReportCarrierEvent
+	GetJourney         *usecases.GetJourney
+	Idempotency        func(route string) func(http.Handler) http.Handler // nil leaves the POSTs unwrapped (handler unit tests)
+	Readiness          *Readiness                                         // nil means always ready
 }
 
 // DefaultServiceName names the server spans and the HTTP metrics when the
@@ -77,6 +79,7 @@ func NewRouter(s *Server, logger *slog.Logger, serviceName string) http.Handler 
 	r.With(s.idempotent(RouteVoidLabel)).Post("/labels/{labelRef}/voids", s.handleVoidLabel)
 	r.Get("/journeys/{trackingNumber}", s.handleGetJourney)
 	r.With(s.idempotent(RouteRecordScan)).Post("/journeys/{trackingNumber}/scans", s.handleRecordScan)
+	r.With(s.idempotent(RouteCarrierEvent)).Post("/carrier-events", s.handleCarrierEvent)
 	return r
 }
 

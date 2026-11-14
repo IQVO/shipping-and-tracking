@@ -27,7 +27,8 @@ var _ ports.JourneyRepository = (*JourneyRepo)(nil)
 
 const journeyColumns = `tracking_number, label_ref, po_number, assignment_id, order_id, tier, state, started_at, last_scan_at,
 	last_node_id, handed_over_at, delivered_at, closed_at, last_exception_at, eta_start, eta_end, eta_assigned_at,
-	point_flag_reason, point_flagged_at, version`
+	point_flag_reason, point_flagged_at, chosen_carrier_id, handoff_node_id, area_version,
+	destination_kind, pickup_point_id, ready_for_collection_at, hold_until, collected_at, version`
 
 func scanJourneyRow(row pgx.Row) (journey.Snapshot, error) {
 	var (
@@ -38,9 +39,15 @@ func scanJourneyRow(row pgx.Row) (journey.Snapshot, error) {
 		pointReason                                   *string
 		pointFlagged                                  *time.Time
 		node                                          *string
+		carrier, handoffNode                          *string
+		areaVersion                                   *int64
+		destKind                                      *string
+		pickupPoint                                   *string
+		readyColl, holdUntil, collected               *time.Time
 	)
 	if err := row.Scan(&s.TrackingNumber, &s.LabelRef, &s.PONumber, &s.AssignmentID, &s.OrderID, &tier, &state, &s.StartedAt,
-		&lastScan, &node, &handed, &delivered, &closed, &excepted, &etaStart, &etaEnd, &etaAssigned, &pointReason, &pointFlagged, &s.Version); err != nil {
+		&lastScan, &node, &handed, &delivered, &closed, &excepted, &etaStart, &etaEnd, &etaAssigned, &pointReason, &pointFlagged,
+		&carrier, &handoffNode, &areaVersion, &destKind, &pickupPoint, &readyColl, &holdUntil, &collected, &s.Version); err != nil {
 		return journey.Snapshot{}, err
 	}
 	s.Tier, s.State, s.LastNodeID = tierOf(tier), journey.State(state), deref(node)
@@ -49,6 +56,13 @@ func scanJourneyRow(row pgx.Row) (journey.Snapshot, error) {
 	s.ClosedAt, s.LastExceptionAt = orZero(closed), orZero(excepted)
 	s.EtaStart, s.EtaEnd, s.EtaAssignedAt = orZero(etaStart), orZero(etaEnd), orZero(etaAssigned)
 	s.PointFlagReason, s.PointFlaggedAt = orString(pointReason), orZero(pointFlagged)
+	s.ChosenCarrierID, s.HandoffNodeID = orString(carrier), orString(handoffNode)
+	if areaVersion != nil {
+		s.AreaVersion = *areaVersion
+	}
+	s.DestinationKind = orString(destKind)
+	s.PickupPointID = orString(pickupPoint)
+	s.ReadyForCollectionAt, s.HoldUntil, s.CollectedAt = orZero(readyColl), orZero(holdUntil), orZero(collected)
 	return s, nil
 }
 
@@ -103,26 +117,43 @@ func (r *JourneyRepo) Save(ctx context.Context, j *journey.Journey) error {
 }
 
 func insertJourney(ctx context.Context, q querier, s journey.Snapshot) error {
-	_, err := q.Exec(ctx, `INSERT INTO package_journeys (`+journeyColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+	_, err := q.Exec(ctx, `INSERT INTO package_journeys (`+journeyColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
 		string(s.TrackingNumber), s.LabelRef, s.PONumber, s.AssignmentID, s.OrderID, string(s.Tier), string(s.State), s.StartedAt.UTC(),
 		nullTime(s.LastScanAt), nullString(s.LastNodeID), nullTime(s.HandedOverAt), nullTime(s.DeliveredAt), nullTime(s.ClosedAt),
 		nullTime(s.LastExceptionAt), nullTime(s.EtaStart), nullTime(s.EtaEnd), nullTime(s.EtaAssignedAt),
-		nullString(s.PointFlagReason), nullTime(s.PointFlaggedAt), s.Version)
+		nullString(s.PointFlagReason), nullTime(s.PointFlaggedAt),
+		nullString(s.ChosenCarrierID), nullString(s.HandoffNodeID), nullAreaVersion(s.AreaVersion),
+		destinationKindOf(s), nullString(s.PickupPointID), nullTime(s.ReadyForCollectionAt), nullTime(s.HoldUntil),
+		nullTime(s.CollectedAt), s.Version)
 	if _, ok := unique(err); ok {
 		return fmt.Errorf("%w: journey %s", ports.ErrConcurrentUpdate, s.TrackingNumber)
 	}
 	return err
 }
 
+// destinationKindOf stores the snapshot's destination kind, defaulting a
+// zero value to SHIP_TO (old callers).
+func destinationKindOf(s journey.Snapshot) string {
+	if s.DestinationKind == "" {
+		return "SHIP_TO"
+	}
+	return s.DestinationKind
+}
+
 func updateJourney(ctx context.Context, q querier, s journey.Snapshot) error {
 	tag, err := q.Exec(ctx, `UPDATE package_journeys SET state = $2, last_scan_at = $3, last_node_id = $4, handed_over_at = $5,
 		delivered_at = $6, closed_at = $7, last_exception_at = $8, eta_start = $9, eta_end = $10, eta_assigned_at = $11,
 		point_flag_reason = $12, point_flagged_at = $13,
-		version = $14
-		WHERE tracking_number = $1 AND version = $15`,
+		chosen_carrier_id = $14, handoff_node_id = $15, area_version = $16,
+		destination_kind = $17, pickup_point_id = $18, ready_for_collection_at = $19, hold_until = $20, collected_at = $21,
+		version = $22
+		WHERE tracking_number = $1 AND version = $23`,
 		string(s.TrackingNumber), string(s.State), nullTime(s.LastScanAt), nullString(s.LastNodeID), nullTime(s.HandedOverAt),
 		nullTime(s.DeliveredAt), nullTime(s.ClosedAt), nullTime(s.LastExceptionAt), nullTime(s.EtaStart), nullTime(s.EtaEnd),
-		nullTime(s.EtaAssignedAt), nullString(s.PointFlagReason), nullTime(s.PointFlaggedAt), s.Version, s.Version-1)
+		nullTime(s.EtaAssignedAt), nullString(s.PointFlagReason), nullTime(s.PointFlaggedAt),
+		nullString(s.ChosenCarrierID), nullString(s.HandoffNodeID), nullAreaVersion(s.AreaVersion),
+		destinationKindOf(s), nullString(s.PickupPointID), nullTime(s.ReadyForCollectionAt), nullTime(s.HoldUntil),
+		nullTime(s.CollectedAt), s.Version, s.Version-1)
 	if err != nil {
 		return err
 	}
@@ -158,7 +189,7 @@ func (r *JourneyRepo) ListStale(ctx context.Context, f repository.StaleFilter) (
 	}
 	rows, err := q.Query(ctx, `
 		SELECT tracking_number FROM package_journeys
-		WHERE state IN ('HANDED_OVER', 'IN_TRANSIT', 'AT_STATION', 'OUT_FOR_DELIVERY')
+		WHERE state IN ('HANDED_OVER', 'IN_TRANSIT', 'AT_STATION', 'WITH_CARRIER', 'OUT_FOR_DELIVERY')
 		  AND last_scan_at < $1
 		  AND NOT (last_exception_at IS NOT NULL AND last_exception_at >= last_scan_at AND state <> 'IN_TRANSIT')
 		  AND ($2::timestamptz IS NULL OR (last_scan_at, tracking_number) > ($2::timestamptz, $3::text))
@@ -191,9 +222,63 @@ func (r *JourneyRepo) ListStale(ctx context.Context, f repository.StaleFilter) (
 	return out, nil
 }
 
+// ListUncollected implements ports.JourneyRepository (ADR 0016): the expired
+// pickup holds, paged by (hold_until, tracking_number).
+func (r *JourneyRepo) ListUncollected(ctx context.Context, f repository.UncollectedFilter) ([]*journey.Journey, error) {
+	var afterAt any
+	if !f.After.HoldUntil.IsZero() {
+		afterAt = f.After.HoldUntil.UTC()
+	}
+	return r.pageIDs(ctx, `
+		SELECT tracking_number FROM package_journeys
+		WHERE state = 'READY_FOR_COLLECTION'
+		  AND hold_until < $1
+		  AND ($2::timestamptz IS NULL OR (hold_until, tracking_number) > ($2::timestamptz, $3::text))
+		ORDER BY hold_until, tracking_number
+		LIMIT $4`, f.Before.UTC(), afterAt, f.After.TrackingNumber, limitOrDefault(f.Limit))
+}
+
+// pageIDs runs one candidate-page query and loads each journey whole.
+func (r *JourneyRepo) pageIDs(ctx context.Context, sql string, args ...any) ([]*journey.Journey, error) {
+	rows, err := queryFor(ctx, r.pool).Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]*journey.Journey, 0, len(ids))
+	for _, id := range ids {
+		j, err := r.Get(ctx, shared.TrackingNumber(id))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, nil
+}
+
 func limitOrDefault(n int) int {
 	if n <= 0 {
 		return 200
 	}
 	return n
+}
+
+// nullAreaVersion maps the zero version (no carrier choice) to SQL NULL.
+func nullAreaVersion(v int64) any {
+	if v == 0 {
+		return nil
+	}
+	return v
 }

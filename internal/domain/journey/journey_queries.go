@@ -62,6 +62,10 @@ func (j *Journey) Snapshot() Snapshot {
 		LastScanAt: j.lastScanAt, LastNodeID: j.lastNodeID, HandedOverAt: j.handedOverAt, DeliveredAt: j.deliveredAt,
 		ClosedAt: j.closedAt, LastExceptionAt: j.lastExceptedAt, EtaStart: j.etaStart, EtaEnd: j.etaEnd,
 		EtaAssignedAt:   j.etaAssignedAt,
-		PointFlagReason: j.pointFlagReason, PointFlaggedAt: j.pointFlaggedAt, Version: j.version,
+		PointFlagReason: j.pointFlagReason, PointFlaggedAt: j.pointFlaggedAt,
+		ChosenCarrierID: j.chosenCarrierID, HandoffNodeID: j.handoffNodeID, AreaVersion: j.areaVersion,
+		DestinationKind: j.destinationKind, PickupPointID: j.pickupPointID,
+		ReadyForCollectionAt: j.readyForCollectionAt, HoldUntil: j.holdUntil, CollectedAt: j.collectedAt,
+		Version: j.version,
 	}
 }

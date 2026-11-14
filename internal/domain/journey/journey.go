@@ -63,7 +63,17 @@ type Journey struct {
 	etaAssignedAt   time.Time
 	pointFlagReason string
 	pointFlaggedAt  time.Time
-	version         int64
+	chosenCarrierID string
+	handoffNodeID   string
+	areaVersion     int64
+	// The pickup pair of ADR 0016: the point this journey delivers to, the
+	// instant it became collectable, its hold deadline and the collection.
+	destinationKind      string
+	pickupPointID        string
+	readyForCollectionAt time.Time
+	holdUntil            time.Time
+	collectedAt          time.Time
+	version              int64
 }
 
 // Snapshot is the persisted form of a journey. Restore validates it.
@@ -88,7 +98,16 @@ type Snapshot struct {
 	EtaAssignedAt   time.Time
 	PointFlagReason string
 	PointFlaggedAt  time.Time
-	Version         int64
+	ChosenCarrierID string
+	HandoffNodeID   string
+	AreaVersion     int64
+	// The pickup pair of ADR 0016.
+	DestinationKind      string
+	PickupPointID        string
+	ReadyForCollectionAt time.Time
+	HoldUntil            time.Time
+	CollectedAt          time.Time
+	Version              int64
 }
 
 // NewJourney is the input of Start.
@@ -99,6 +118,13 @@ type NewJourney struct {
 	AssignmentID   string
 	OrderID        string
 	Tier           shared.Tier
+	// PickupPointID makes the journey a pickup journey (ADR 0016): its
+	// destination is a pickup point, the wave deposits the package there and
+	// the shopper collects it. Empty means a ship-to journey.
+	PickupPointID string
+	// HoldUntil is the point's retention deadline of a pickup journey: the
+	// sweep returns an uncollected package to the sender after it (ADR 0016).
+	HoldUntil time.Time
 }
 
 func checkIdentity(tracking TrackingNumber, labelRef, po, assignment, order string, tier shared.Tier) error {
@@ -122,11 +148,40 @@ func Start(in NewJourney, now time.Time) (*Journey, error) {
 	if err := checkIdentity(in.TrackingNumber, in.LabelRef, in.PONumber, in.AssignmentID, in.OrderID, in.Tier); err != nil {
 		return nil, err
 	}
+	destKind := destinationShipTo
+	if in.PickupPointID != "" {
+		if !shared.ValidID(in.PickupPointID) {
+			return nil, shared.Invalid("pickupPointId %q is not a valid id", in.PickupPointID)
+		}
+		if in.HoldUntil.IsZero() {
+			return nil, shared.Invalid("a pickup journey needs a holdUntil")
+		}
+		destKind = destinationPickupPoint
+	}
 	return &Journey{
 		tracking: in.TrackingNumber, labelRef: in.LabelRef, poNumber: in.PONumber, assignmentID: in.AssignmentID,
 		orderID: in.OrderID, tier: in.Tier, state: StateLabelled, startedAt: shared.UTC(now), version: 1,
+		destinationKind: destKind, pickupPointID: in.PickupPointID, holdUntil: shared.UTC(in.HoldUntil),
 	}, nil
 }
+
+// The destination kinds of ADR 0016.
+const (
+	destinationShipTo      = "SHIP_TO"
+	destinationPickupPoint = "PICKUP_POINT"
+)
+
+// DestinationKind reports SHIP_TO or PICKUP_POINT (ADR 0016).
+func (j *Journey) DestinationKind() string { return j.destinationKind }
+
+// PickupPointID reports the point of a pickup journey ("" for ship-to).
+func (j *Journey) PickupPointID() string { return j.pickupPointID }
+
+// HoldUntil reports the retention deadline of a pickup journey.
+func (j *Journey) HoldUntil() time.Time { return j.holdUntil }
+
+// ReadyForCollectionAt reports when the package reached its point.
+func (j *Journey) ReadyForCollectionAt() time.Time { return j.readyForCollectionAt }
 
 // ScanInput is the input of RecordScan.
 type ScanInput struct {
@@ -134,6 +189,13 @@ type ScanInput struct {
 	NodeID string
 	Type   ScanType
 	At     time.Time
+	// DestinationPostalPrefix is the label's postal prefix; it rides the
+	// PackageHandedToCarrier event of a CARRIER_HANDOFF scan (ADR 0015) and is
+	// ignored by every other scan type.
+	DestinationPostalPrefix string
+	// ProofCode is the shopper's collection proof of a COLLECTED scan (ADR
+	// 0016); empty when none was taken.
+	ProofCode string
 }
 
 // Result tells the caller what a command did. Changed is true when the
@@ -161,7 +223,10 @@ func (in ScanInput) validate() error {
 	return nil
 }
 
-func (j *Journey) hasScan(id string) bool {
+// HasScan reports whether a scanId is already on the journey: the carrier
+// re-send rule of ADR 0015 needs it (a re-sent report is ErrDuplicateScan
+// even when the journey is already in carrier custody).
+func (j *Journey) HasScan(id string) bool {
 	for _, s := range j.scans {
 		if s.ID == id {
 			return true
@@ -185,7 +250,7 @@ func (j *Journey) RecordScan(in ScanInput, now time.Time) (Result, error) {
 	if j.state.Terminal() {
 		return Result{}, fmt.Errorf("%w: journey %s is %s", ErrJourneyClosed, j.tracking, j.state)
 	}
-	if j.hasScan(in.ID) {
+	if j.HasScan(in.ID) {
 		return Result{}, fmt.Errorf("%w: %s", ErrDuplicateScan, in.ID)
 	}
 	if !j.lastScanAt.IsZero() && in.At.Before(j.lastScanAt) {
@@ -193,7 +258,13 @@ func (j *Journey) RecordScan(in ScanInput, now time.Time) (Result, error) {
 		return Result{Changed: true}, fmt.Errorf("%w: %s is older than the last applied scan at %s",
 			ErrScanOutOfOrder, in.ID, j.lastScanAt.Format(time.RFC3339))
 	}
-	to, ok := next(in.Type, j.state)
+	// A physical handoff to a carrier presumes the deterministic choice was
+	// computed at the station (ADR 0015); without one the scan is a plain
+	// validation refusal.
+	if in.Type == ScanCarrierHandoff && !j.CarrierChosen() {
+		return Result{}, shared.Invalid("a %s scan requires a journey whose area mode is CARRIER_HANDOFF", in.Type)
+	}
+	to, ok := next(in.Type, j.state, j.CarrierChosen())
 	if !ok {
 		j.store(in, false)
 		return Result{Changed: true}, fmt.Errorf("%w: a %s scan has no edge from %s", shared.ErrIllegalTransition, in.Type, j.state)
@@ -219,11 +290,33 @@ func (j *Journey) apply(in ScanInput, to State, now time.Time) []shared.Event {
 			Header: h, TrackingNumber: j.tracking, PONumber: j.poNumber, NodeID: in.NodeID, HandedOverAt: j.handedOverAt,
 		})
 	}
+	if from == StateAtStation && to == StateWithCarrier {
+		evs = append(evs, PackageHandedToCarrier{
+			Header: h, TrackingNumber: j.tracking, AssignmentID: j.assignmentID, OrderID: j.orderID,
+			CarrierID: j.chosenCarrierID, HandoffNodeID: j.handoffNodeID,
+			DestinationPostalPrefix: in.DestinationPostalPrefix, HandedAt: j.lastScanAt,
+		})
+	}
 	if to == StateDelivered {
 		j.deliveredAt = j.lastScanAt
 		j.closedAt = shared.UTC(now)
 		evs = append(evs, PackageDelivered{
 			Header: h, TrackingNumber: j.tracking, AssignmentID: j.assignmentID, OrderID: j.orderID, DeliveredAt: j.deliveredAt,
+		})
+	}
+	if to == StateReadyForCollection {
+		j.readyForCollectionAt = j.lastScanAt
+		evs = append(evs, PackageReadyForCollection{
+			Header: h, TrackingNumber: j.tracking, AssignmentID: j.assignmentID, OrderID: j.orderID,
+			PickupPointID: j.pickupPointID, ReadyForCollectionAt: j.readyForCollectionAt, HoldUntil: j.holdUntil,
+		})
+	}
+	if to == StateCollected {
+		j.collectedAt = j.lastScanAt
+		j.closedAt = shared.UTC(now)
+		evs = append(evs, PackageCollected{
+			Header: h, TrackingNumber: j.tracking, AssignmentID: j.assignmentID, OrderID: j.orderID,
+			PickupPointID: j.pickupPointID, CollectedAt: j.collectedAt, ProofCode: in.ProofCode,
 		})
 	}
 	return evs

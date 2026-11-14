@@ -80,6 +80,12 @@ spec:
               value: {{ .Values.config.lastmileConsumerGroup | quote }}
             - name: CATALOG_CONSUMER_GROUP
               value: {{ .Values.config.catalogConsumerGroup | quote }}
+            - name: ST_AREAS_CONSUMER_GROUP
+              value: {{ .Values.config.areasConsumerGroup | quote }}
+            {{- with .Values.config.pickupHoldDays }}
+            - name: PICKUP_HOLD_DAYS
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.config.outboxRelayInterval }}
             - name: OUTBOX_RELAY_INTERVAL
               value: {{ . | quote }}

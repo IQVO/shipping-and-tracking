@@ -30,6 +30,14 @@ type Deps struct {
 	ShipTo    ports.ShipToGateway
 	Sealer    ports.ShipToSealer
 	StopKeys  ports.StopKeyer
+	// PickupHoldDays is the retention window of an uncollected pickup
+	// package (ADR 0016); zero means the default of seven days.
+	PickupHoldDays int
+	// AreaModes is the local read model of node-topology's service-area
+	// delivery mode (ADR 0015); nil disables the carrier-choice branch (tests).
+	AreaModes ports.AreaModeView
+	// PickupPoints is the local copy of node-topology's pickup points (ADR 0016).
+	PickupPoints ports.PickupPointView
 	// Metrics records the business outcome of each label-issue attempt; nil
 	// records nothing, so unit tests need no wiring.
 	Metrics ports.LabelMetrics
@@ -51,6 +59,17 @@ func (noMetrics) LabelRejected(context.Context, string) {}
 
 // writer is what every command embeds.
 type writer struct{ Deps }
+
+// DefaultPickupHoldDays is the retention window of an uncollected pickup
+// package when no configuration names one (ADR 0016).
+const DefaultPickupHoldDays = 7
+
+func (w writer) holdDays() int {
+	if w.PickupHoldDays > 0 {
+		return w.PickupHoldDays
+	}
+	return DefaultPickupHoldDays
+}
 
 // now returns the clock's current time in UTC.
 func (w writer) now() time.Time { return w.Clock.Now().UTC() }

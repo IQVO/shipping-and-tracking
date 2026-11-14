@@ -27,6 +27,19 @@ func started(t *testing.T) *Journey {
 	return j
 }
 
+// startedPickup starts a pickup journey with a seven-day hold (ADR 0016).
+func startedPickup(t *testing.T) *Journey {
+	t.Helper()
+	in := newJourneyIn()
+	in.PickupPointID = "node-pnt-7"
+	in.HoldUntil = t0.Add(7 * 24 * time.Hour)
+	j, err := Start(in, t0)
+	if err != nil {
+		t.Fatalf("Start pickup: %v", err)
+	}
+	return j
+}
+
 // path lists the scans that lead a fresh journey to each non-terminal state,
 // one hour apart starting at hour 1 (the journey starts at hour 0).
 var path = []struct {
@@ -65,6 +78,27 @@ func inState(t *testing.T, state State) *Journey {
 		_, err := j.DeclareLost(at(20), at(21))
 		mustNoErr(t, err)
 		return j
+	case StateWithCarrier:
+		driveTo(t, j, StateAtStation)
+		mustNoErr(t, j.NoteCarrierChoice("crr-1", "node-handoff", 1))
+		_, err := j.RecordScan(scan("s"+string(ScanCarrierHandoff), ScanCarrierHandoff, 4), at(4))
+		mustNoErr(t, err)
+		return j
+	case StateReadyForCollection, StateCollected:
+		// A pickup journey reaches its pair through the deposit scan (ADR 0016).
+		pj := startedPickup(t)
+		driveTo(t, pj, StateAtStation)
+		_, err := pj.RecordScan(scan("s"+string(ScanOutForDelivery), ScanOutForDelivery, 5), at(5))
+		mustNoErr(t, err)
+		_, err = pj.RecordScan(scan("s"+string(ScanPointDeposited), ScanPointDeposited, 6), at(6))
+		mustNoErr(t, err)
+		if state == StateCollected {
+			in := scan("s"+string(ScanCollected), ScanCollected, 9)
+			in.ProofCode = "4821"
+			_, err = pj.RecordScan(in, at(9))
+			mustNoErr(t, err)
+		}
+		return pj
 	}
 	driveTo(t, j, state)
 	return j

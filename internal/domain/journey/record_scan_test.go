@@ -62,18 +62,26 @@ var legalEdges = map[ScanType]map[State]State{
 	ScanDeparture:         {StateHandedOver: StateInTransit, StateInTransit: StateInTransit},
 	ScanTransitArrival:    {StateHandedOver: StateInTransit, StateInTransit: StateInTransit},
 	ScanStationArrival:    {StateHandedOver: StateAtStation, StateInTransit: StateAtStation},
-	ScanOutForDelivery:    {StateAtStation: StateOutForDelivery},
+	ScanCarrierHandoff:    {StateAtStation: StateWithCarrier},
+	ScanOutForDelivery:    {StateAtStation: StateOutForDelivery, StateWithCarrier: StateOutForDelivery},
 	ScanDelivered:         {StateOutForDelivery: StateDelivered},
 	ScanDeliveryFailed:    {StateOutForDelivery: StateAtStation},
+	// The pickup pair of ADR 0016.
+	ScanPointDeposited: {StateOutForDelivery: StateReadyForCollection},
+	ScanCollected:      {StateReadyForCollection: StateCollected},
 }
 
-var openStates = []State{StateLabelled, StateHandedOver, StateInTransit, StateAtStation, StateOutForDelivery}
+var openStates = []State{StateLabelled, StateHandedOver, StateInTransit, StateAtStation, StateWithCarrier, StateOutForDelivery, StateReadyForCollection}
 
 func TestEveryScanTypeAgainstEveryOpenState(t *testing.T) {
 	for _, typ := range AllScanTypes() {
 		for _, from := range openStates {
 			t.Run(string(typ)+"_from_"+string(from), func(t *testing.T) {
 				j := inState(t, from)
+				if typ == ScanCarrierHandoff {
+					// The handoff presumes the deterministic choice (ADR 0015).
+					mustNoErr(t, j.NoteCarrierChoice("crr-1", "node-handoff", 1))
+				}
 				before := j.Version()
 				res, err := j.RecordScan(scan("probe", typ, 30), at(31))
 				if to, legal := legalEdges[typ][from]; legal {

@@ -28,3 +28,5 @@ The *Status* column is copied from each ADR's own `## Status` section.
 | [0012](./0012-analytics-read-side.md) | analytics read side | Accepted (2026-11-08) |
 | [0013](./0013-day-of-eta-window-on-the-journey.md) | day-of ETA window on the journey | Accepted (2026-11-11) |
 | [0014](./0014-relay-the-delivery-point-flag-by-order-id.md) | relay the delivery-point flag by orderId | Accepted (2026-11-11) |
+| [0015](./0015-carrier-handoff-and-carrier-events-webhook.md) | carrier handoff and the external carrier webhook (C4) | Accepted (2026-11-13) |
+| [0016](./0016-pickup-collection.md) | pickup collection - deposit, collect and the uncollected hold | Accepted (2026-11-13) |

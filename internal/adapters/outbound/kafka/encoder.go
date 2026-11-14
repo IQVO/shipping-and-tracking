@@ -40,6 +40,8 @@ type labelIssuedData struct {
 	Carrier                 string `json:"carrier"`
 	StopKey                 string `json:"stopKey"`
 	DestinationPostalPrefix string `json:"destinationPostalPrefix"`
+	// PickupPointID is empty on a ship-to label (ADR 0016).
+	PickupPointID string `json:"pickupPointId,omitempty"`
 }
 
 type labelVoidedData struct {
@@ -83,6 +85,7 @@ type packageReturnedData struct {
 	TrackingNumber string `json:"trackingNumber"`
 	OrderID        string `json:"orderId"`
 	ReturnedAt     string `json:"returnedAt"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 type packageLostData struct {
@@ -168,6 +171,7 @@ func payloadFor(ev shared.Event) (any, error) {
 			LabelRef: string(e.LabelRef), TrackingNumber: string(e.TrackingNumber), PONumber: e.PONumber,
 			AssignmentID: e.AssignmentID, OrderID: e.OrderID, PackageNo: e.PackageNo, Tier: string(e.Tier),
 			Carrier: e.Carrier, StopKey: e.StopKey, DestinationPostalPrefix: e.DestinationPostalPrefix,
+			PickupPointID: e.PickupPointID,
 		}, nil
 	case label.LabelVoided:
 		return labelVoidedData{LabelRef: string(e.LabelRef), TrackingNumber: string(e.TrackingNumber), Reason: e.Reason}, nil
@@ -190,12 +194,18 @@ func journeyPayload(ev shared.Event) (any, error) {
 		return packageDeliveredData{
 			TrackingNumber: string(e.TrackingNumber), AssignmentID: e.AssignmentID, OrderID: e.OrderID, DeliveredAt: ts(e.DeliveredAt),
 		}, nil
+	case journey.PackageHandedToCarrier:
+		return carrierHandoffPayload(e), nil
+	case journey.PackageReadyForCollection:
+		return readyForCollectionPayload(e), nil
+	case journey.PackageCollected:
+		return collectedPayload(e), nil
 	case journey.PackageExceptionRaised:
 		return packageExceptionData{
 			TrackingNumber: string(e.TrackingNumber), AssignmentID: e.AssignmentID, OrderID: e.OrderID, Reason: e.Reason, At: ts(e.RaisedAt),
 		}, nil
 	case journey.PackageReturned:
-		return packageReturnedData{TrackingNumber: string(e.TrackingNumber), OrderID: e.OrderID, ReturnedAt: ts(e.ReturnedAt)}, nil
+		return packageReturnedData{TrackingNumber: string(e.TrackingNumber), OrderID: e.OrderID, ReturnedAt: ts(e.ReturnedAt), Reason: e.Reason}, nil
 	case journey.PackageLost:
 		return packageLostData{TrackingNumber: string(e.TrackingNumber), OrderID: e.OrderID, DeclaredAt: ts(e.DeclaredAt)}, nil
 	case journey.PackageEtaWindowAssigned:

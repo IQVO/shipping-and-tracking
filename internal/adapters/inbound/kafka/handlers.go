@@ -17,10 +17,11 @@ import (
 // Consumed topics: the producers' integration topics (their contracts are
 // restated in apis/asyncapi.yaml and ADR 0003, never imported).
 const (
-	VendorTopic   = "retailnetwork.vendor-connectivity.events"
-	LinehaulTopic = "retailnetwork.linehaul-transportation.events"
-	LastMileTopic = "retailnetwork.last-mile-delivery.events"
-	CatalogTopic  = "retailnetwork.offer-availability.events"
+	VendorTopic       = "retailnetwork.vendor-connectivity.events"
+	LinehaulTopic     = "retailnetwork.linehaul-transportation.events"
+	LastMileTopic     = "retailnetwork.last-mile-delivery.events"
+	CatalogTopic      = "retailnetwork.offer-availability.events"
+	NodeTopologyTopic = "retailnetwork.node-topology.events"
 )
 
 // Consumed CloudEvents types (byte-identical to the producers' catalogues).
@@ -38,14 +39,17 @@ const (
 	TypePackageReturnInitiated        = "com.retailnetwork.logistics.last-mile-delivery.packageattempthistory.PackageReturnInitiated"
 	TypePackageReturnInitiatedOnRoute = "com.retailnetwork.logistics.last-mile-delivery.route.PackageReturnInitiated"
 	TypeCatalogItemCreated            = "com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated"
+	// ServiceAreaAssigned feeds the AreaModeView read model (ADR 0015).
+	TypeServiceAreaAssigned = "com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned"
 )
 
 // Inbox consumer names (processed_events.consumer).
 const (
-	ConsumerVendor   = "vendor-connectivity"
-	ConsumerLinehaul = "linehaul-transportation"
-	ConsumerLastMile = "last-mile-delivery"
-	ConsumerCatalog  = "offer-availability"
+	ConsumerVendor       = "vendor-connectivity"
+	ConsumerLinehaul     = "linehaul-transportation"
+	ConsumerLastMile     = "last-mile-delivery"
+	ConsumerCatalog      = "offer-availability"
+	ConsumerNodeTopology = "node-topology"
 )
 
 // Departure and arrival vocabulary of linehaul (ADR 0002 A20).
