@@ -1,0 +1,10 @@
+{
+  "name": "Ana Example",
+  "line1": "10 Sample Street",
+  "line2": "Apt 4",
+  "city": "Sampletown",
+  "region": "SP",
+  "postalCode": "01310-100",
+  "countryCode": "BR",
+  "phone": "+55 11 5550 0100"
+}
