@@ -78,15 +78,16 @@ com.retailnetwork.logistics.shipping-and-tracking.journey.PackageLost
 com.retailnetwork.logistics.shipping-and-tracking.label.LabelIssued
 ```
 
-Specified in [`apis/asyncapi.yaml`](apis/asyncapi.yaml) — nine published events, four consumed topics:
+Specified in [`apis/asyncapi.yaml`](apis/asyncapi.yaml) — thirteen published events, five consumed topics:
 
 | Topic | Direction | Messages |
 |---|---|---|
-| `retailnetwork.shipping-and-tracking.events` | publishes (via the transactional outbox) | `LabelIssued`, `LabelVoided`, `PackageHandedOver`, `PackageScanned`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost`, `PackageEtaWindowAssigned` |
+| `retailnetwork.shipping-and-tracking.events` | publishes (via the transactional outbox) | `LabelIssued`, `LabelVoided`, `PackageHandedOver`, `PackageScanned`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost`, `PackageEtaWindowAssigned`, `PackageDeliveryPointFlagged`, `PackageHandedToCarrier`, `PackageReadyForCollection`, `PackageCollected` |
 | `retailnetwork.vendor-connectivity.events` | consumes | `VendorShipmentConfirmed` |
 | `retailnetwork.linehaul-transportation.events` | consumes | `LoadDeparted`, `LoadArrived` |
-| `retailnetwork.last-mile-delivery.events` | consumes | `PackageOutForDelivery`, `DeliveryAttempted`, `PackageReturnInitiated`, `StopEtaWindowAssigned` |
+| `retailnetwork.last-mile-delivery.events` | consumes | `PackageOutForDelivery`, `DeliveryAttempted`, `PackageReturnInitiated`, `StopEtaWindowAssigned`, `DeliveryPointFlagged` |
 | `retailnetwork.offer-availability.events` | consumes | `CatalogItemCreated` |
+| `retailnetwork.node-topology.events` | consumes | `ServiceAreaAssigned`, `NodeRegistered`, `NodeActivated`, `NodeSuspended`, `NodeRetired` |
 
 The consumers fold vendor, linehaul, last-mile and catalog events into the journeys and raise one `NO_SCAN` exception per silence (then `PackageLost` after 48 more hours on an in-transit package).
 

@@ -19,6 +19,7 @@ The use cases live in `internal/application/usecases`. Every use case that chang
 | `ApplyScans` | consumed `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted` | the four Kafka consumers | same as `RecordScan`, per tracking number |
 | `ReturnToSender` | consumed `PackageReturnInitiated` | last-mile consumer | `PackageReturned` |
 | `ApplyEtaWindows` (`AssignEta`) | consumed `StopEtaWindowAssigned` | last-mile consumer | `PackageEtaWindowAssigned`, per tracking number |
+| `RelayDeliveryPointFlag` (`FlagDeliveryPoint`) | consumed `DeliveryPointFlagged` | last-mile consumer | `PackageDeliveryPointFlagged`, per tracking number |
 | `SweepSilence` (`RaiseException`, `DeclareLost`) | timer, `SILENCE_SWEEP_INTERVAL` (5 m), also at start | scheduler job `silence-sweep` | `PackageExceptionRaised`, `PackageLost` |
 | `PurgeShipTo` | timer, `HOUSEKEEPING_INTERVAL` (1 h), also at start | scheduler job `ship-to-purge` | none |
 | `Housekeeping` of the technical tables | timer, `HOUSEKEEPING_INTERVAL`, also at start | scheduler job `housekeeping` (`postgres.Housekeeping`) | none |
@@ -32,6 +33,7 @@ REST errors are RFC 9457 `application/problem+json`; `type` is the slug (`intern
 | Error | HTTP | Slug |
 | --- | --- | --- |
 | `shared.ErrValidation` and malformed bodies | 422 | `validation-failed` |
+| `shipto.ErrAddressSuspect` | 422 | `address-suspect` |
 | missing `Idempotency-Key` | 400 | `idempotency-key-required` |
 | `ports.ErrNotFound` | 404 | `not-found` |
 | `label.ErrLabelAlreadyIssued` | 409 | `label-already-issued` |
@@ -56,7 +58,7 @@ Source: `internal/application/usecases/labels.go`, `internal/domain/label/label.
   1. Validate the command with placeholder values; reject with `validation-failed`.
   2. Look up a label for `(poNumber, packageNo)`; a hit is `label-already-issued`.
   3. Call `GetShipTo` on customer-ordering. A 404 becomes `validation-failed` ("orderId ... is unknown to customer-ordering"); any other failure is `ship-to-unavailable`.
-  4. Validate the address, seal it (AES-256-GCM, fresh nonce), derive `stopKey` (HMAC-SHA-256 of the normalised address) and the five-character postal prefix.
+  4. Validate the address, then run the deterministic deliverability check on it (`Address.Quality`, ADR 0011). A `SUSPECT` verdict refuses the issuance with `ErrAddressSuspect`, answered 422 `address-suspect`; the detail carries reason tokens only (`RECIPIENT_PLACEHOLDER`, `STREET_PLACEHOLDER`, `STREET_MISSING_NUMBER`, `CITY_PLACEHOLDER`, `POSTAL_CODE_TOO_SHORT`), and no label, journey, snapshot or event is written. Otherwise seal the address (AES-256-GCM, fresh nonce), derive `stopKey` (HMAC-SHA-256 of the normalised address) and the five-character postal prefix.
   5. In one transaction: mint `labelRef` (`lbl-<uuid>`) and a tracking number (`RN` plus 16 base-32 characters), save the label, save the sealed snapshot, **start the journey** (`StartJourney`, state `LABELLED`, version 1, no event of its own) and enqueue `LabelIssued`.
 - **Result:** `201` with the label metadata, never the address. The attempt is counted once in `shipping.labels.issued` as `issued` or `rejected` with the reason.
 - **Idempotency:** the `Idempotency-Key` replays the first response; a new key for the same package hits `label-already-issued`.
@@ -92,6 +94,14 @@ Source: `usecases/eta.go`, `internal/domain/journey/journey_eta.go` (ADR 0013).
 - **Flow:** claim the event id, then for each tracking number of the stop: load the journey, `AssignEta(etaStart, etaEnd, assignedAt)`, save, enqueue `PackageEtaWindowAssigned`. The window is not a scan: the state does not change.
 - **Invariants:** a terminal journey refuses it (`ErrJourneyClosed`), an `assignedAt` not strictly newer than the stored one is stale (`ErrEtaStale`). Both, and an unknown tracking number, are counted and acknowledged; a replay of the event is skipped by the inbox.
 - **Reading it:** `Journey.EtaCurrent` is true while the state is `OUT_FOR_DELIVERY` and the window was assigned at or after the last applied scan; only then do REST, MCP and A2A `get_journey` carry `etaStart` and `etaEnd`.
+
+## RelayDeliveryPointFlag: FlagDeliveryPoint
+
+Source: `usecases/point_flag.go`, `internal/domain/journey/journey_point_flag.go` (ADR 0014).
+
+- **Trigger:** consumed `DeliveryPointFlagged` (last-mile-delivery, the delivery point behind a stop failed twice; one event per stop). The consumer accepts only the reasons `NOT_HOME` and `ACCESS_PROBLEM` and drops `stopKey`.
+- **Flow:** claim the event id, then for each tracking number of the stop: load the journey, `FlagDeliveryPoint(reason, flaggedAt)`, save, enqueue `PackageDeliveryPointFlagged` (with the journey's `assignmentId` and `orderId`, so customer-ordering can warn the shopper by order). The flag is not a scan: the state does not change.
+- **Invariants:** a terminal journey refuses it (`ErrJourneyClosed`) and a `flaggedAt` not strictly newer than the stored one is stale (`ErrPointFlagStale`). Both, and an unknown tracking number, are counted and acknowledged; a replay of the event is skipped by the inbox.
 
 ## SweepSilence: RaiseException and DeclareLost
 
