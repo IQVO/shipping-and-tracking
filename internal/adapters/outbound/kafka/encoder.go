@@ -190,6 +190,8 @@ func journeyPayload(ev shared.Event) (any, error) {
 		return packageDeliveredData{
 			TrackingNumber: string(e.TrackingNumber), AssignmentID: e.AssignmentID, OrderID: e.OrderID, DeliveredAt: ts(e.DeliveredAt),
 		}, nil
+	case journey.PackageHandedToCarrier:
+		return carrierHandoffPayload(e), nil
 	case journey.PackageExceptionRaised:
 		return packageExceptionData{
 			TrackingNumber: string(e.TrackingNumber), AssignmentID: e.AssignmentID, OrderID: e.OrderID, Reason: e.Reason, At: ts(e.RaisedAt),

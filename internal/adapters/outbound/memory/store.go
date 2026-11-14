@@ -37,6 +37,7 @@ type state struct {
 	snapshots map[label.Ref]repository.SealedShipTo
 	journeys  map[shared.TrackingNumber]journey.Snapshot
 	catalog   map[string]repository.CatalogDimensions
+	areas     map[string]repository.AreaMode
 	processed map[string]struct{}
 	outbox    []shared.Event
 }
@@ -47,6 +48,7 @@ func newState() state {
 		snapshots: map[label.Ref]repository.SealedShipTo{},
 		journeys:  map[shared.TrackingNumber]journey.Snapshot{},
 		catalog:   map[string]repository.CatalogDimensions{},
+		areas:     map[string]repository.AreaMode{},
 		processed: map[string]struct{}{},
 	}
 }
@@ -68,7 +70,7 @@ func cloneMap[K comparable, V any](m map[K]V) map[K]V {
 func (s *Store) capture() state {
 	return state{
 		labels: cloneMap(s.st.labels), snapshots: cloneMap(s.st.snapshots), journeys: cloneMap(s.st.journeys),
-		catalog: cloneMap(s.st.catalog), processed: cloneMap(s.st.processed),
+		catalog: cloneMap(s.st.catalog), areas: cloneMap(s.st.areas), processed: cloneMap(s.st.processed),
 		outbox: append([]shared.Event(nil), s.st.outbox...),
 	}
 }
@@ -94,6 +96,9 @@ func (s *Store) Snapshots() *ShipToSnapshots { return &ShipToSnapshots{s} }
 
 // Journeys returns the JourneyRepository double.
 func (s *Store) Journeys() *JourneyRepository { return &JourneyRepository{s} }
+
+// Areas returns the AreaModeView double.
+func (s *Store) Areas() *AreaModeView { return &AreaModeView{s} }
 
 // Catalog returns the CatalogDimensionsView double.
 func (s *Store) Catalog() *CatalogDimensionsView { return &CatalogDimensionsView{s} }
