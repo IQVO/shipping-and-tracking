@@ -113,7 +113,7 @@ config:
   linehaulConsumerGroup: ""          # LINEHAUL_CONSUMER_GROUP
   lastmileConsumerGroup: ""          # LASTMILE_CONSUMER_GROUP
   catalogConsumerGroup: ""           # CATALOG_CONSUMER_GROUP
-  areasConsumerGroup: ""             # ST_AREAS_CONSUMER_GROUP
+  areasConsumerGroup: "shipping-and-tracking-areas"  # ST_AREAS_CONSUMER_GROUP (the node-topology areas/points group, ADR 0015/0016)
   # OUTBOX_RELAY_INTERVAL: Go duration or seconds. Empty = not rendered (1s).
   outboxRelayInterval: ""
   # OUTBOX_MAX_ATTEMPTS: failures before the relay excludes a row; 0 = unlimited.

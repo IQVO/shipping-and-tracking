@@ -533,7 +533,7 @@ components:
           format: date-time
     CarrierEventRequest:
       type: object
-      description: One external carrier progress report (ADR 0015). No authentication: the route is exactly as privileged as the scans route.
+      description: "One external carrier progress report (ADR 0015). No authentication - the route is exactly as privileged as the scans route."
       required: [carrierId, carrierEventId, trackingNumber, status, at]
       additionalProperties: false
       properties:
