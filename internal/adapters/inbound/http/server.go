@@ -21,15 +21,17 @@ import (
 
 // Route names of the idempotent POSTs (the idempotency_keys.route values).
 const (
-	RouteIssueLabel   = "POST /labels"
-	RouteVoidLabel    = "POST /labels/{labelRef}/voids"
-	RouteRecordScan   = "POST /journeys/{trackingNumber}/scans"
-	RouteCarrierEvent = "POST /carrier-events"
+	RouteIssueLabel       = "POST /labels"
+	RouteIssueReturnLabel = "POST /return-labels"
+	RouteVoidLabel        = "POST /labels/{labelRef}/voids"
+	RouteRecordScan       = "POST /journeys/{trackingNumber}/scans"
+	RouteCarrierEvent     = "POST /carrier-events"
 )
 
 // Server holds the use cases the handlers call.
 type Server struct {
 	IssueLabel         *usecases.IssueLabel
+	IssueReturnLabel   *usecases.IssueReturnLabel
 	VoidLabel          *usecases.VoidLabel
 	RecordScan         *usecases.RecordScan
 	ReportCarrierEvent *usecases.ReportCarrierEvent
@@ -76,6 +78,7 @@ func NewRouter(s *Server, logger *slog.Logger, serviceName string) http.Handler 
 	r.Get("/readyz", s.handleReadyz)
 
 	r.With(s.idempotent(RouteIssueLabel)).Post("/labels", s.handleIssueLabel)
+	r.With(s.idempotent(RouteIssueReturnLabel)).Post("/return-labels", s.handleIssueReturnLabel)
 	r.With(s.idempotent(RouteVoidLabel)).Post("/labels/{labelRef}/voids", s.handleVoidLabel)
 	r.Get("/journeys/{trackingNumber}", s.handleGetJourney)
 	r.With(s.idempotent(RouteRecordScan)).Post("/journeys/{trackingNumber}/scans", s.handleRecordScan)

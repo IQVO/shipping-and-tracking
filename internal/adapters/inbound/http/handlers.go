@@ -25,6 +25,14 @@ type voidLabelRequest struct {
 	Reason *string `json:"reason"`
 }
 
+// issueReturnLabelRequest is the body of POST /return-labels (ADR 0017).
+type issueReturnLabelRequest struct {
+	ReturnAuthorizationID   *string `json:"returnAuthorizationId"`
+	OrderID                 *string `json:"orderId"`
+	PackageNo               *int    `json:"packageNo"`
+	DestinationPostalPrefix *string `json:"destinationPostalPrefix"`
+}
+
 type recordScanRequest struct {
 	ScanID   *string    `json:"scanId"`
 	NodeID   *string    `json:"nodeId"`
@@ -100,6 +108,44 @@ func (q issueLabelRequest) command() (usecases.IssueLabelCmd, error) {
 	}
 	cmd.PackageNo = *q.PackageNo
 	return cmd, nil
+}
+
+func (q issueReturnLabelRequest) command() (usecases.IssueReturnLabelCmd, error) {
+	var cmd usecases.IssueReturnLabelCmd
+	var err error
+	if cmd.ReturnAuthorizationID, err = text("returnAuthorizationId", q.ReturnAuthorizationID, maxFieldLen); err != nil {
+		return cmd, err
+	}
+	if cmd.OrderID, err = text("orderId", q.OrderID, maxFieldLen); err != nil {
+		return cmd, err
+	}
+	if cmd.DestinationPostalPrefix, err = text("destinationPostalPrefix", q.DestinationPostalPrefix, label.MaxPostalPrefix); err != nil {
+		return cmd, err
+	}
+	if q.PackageNo == nil || *q.PackageNo < 1 || *q.PackageNo > maxInt32 {
+		return cmd, validationError("packageNo must be between 1 and %d", maxInt32)
+	}
+	cmd.PackageNo = *q.PackageNo
+	return cmd, nil
+}
+
+func (s *Server) handleIssueReturnLabel(w http.ResponseWriter, r *http.Request) {
+	var req issueReturnLabelRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	cmd, err := req.command()
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	v, err := s.IssueReturnLabel.Execute(r.Context(), cmd)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, v)
 }
 
 func (s *Server) handleVoidLabel(w http.ResponseWriter, r *http.Request) {

@@ -42,6 +42,10 @@ type labelIssuedData struct {
 	DestinationPostalPrefix string `json:"destinationPostalPrefix"`
 	// PickupPointID is empty on a ship-to label (ADR 0016).
 	PickupPointID string `json:"pickupPointId,omitempty"`
+	// Purpose and ReturnAuthorizationID appear only on a reverse label;
+	// an outbound label omits both (ADR 0017).
+	Purpose               string `json:"purpose,omitempty"`
+	ReturnAuthorizationID string `json:"returnAuthorizationId,omitempty"`
 }
 
 type labelVoidedData struct {
@@ -167,12 +171,16 @@ func ts(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 func payloadFor(ev shared.Event) (any, error) {
 	switch e := ev.(type) {
 	case label.LabelIssued:
-		return labelIssuedData{
+		d := labelIssuedData{
 			LabelRef: string(e.LabelRef), TrackingNumber: string(e.TrackingNumber), PONumber: e.PONumber,
 			AssignmentID: e.AssignmentID, OrderID: e.OrderID, PackageNo: e.PackageNo, Tier: string(e.Tier),
 			Carrier: e.Carrier, StopKey: e.StopKey, DestinationPostalPrefix: e.DestinationPostalPrefix,
 			PickupPointID: e.PickupPointID,
-		}, nil
+		}
+		if e.Purpose == label.PurposeReturn {
+			d.Purpose, d.ReturnAuthorizationID = string(e.Purpose), e.ReturnAuthorizationID
+		}
+		return d, nil
 	case label.LabelVoided:
 		return labelVoidedData{LabelRef: string(e.LabelRef), TrackingNumber: string(e.TrackingNumber), Reason: e.Reason}, nil
 	}

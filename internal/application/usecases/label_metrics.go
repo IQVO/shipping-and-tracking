@@ -26,14 +26,14 @@ var rejectionReasons = []struct {
 // caller can act on (a database error, a bug).
 const internalErrorReason = "internal-error"
 
-// recordOutcome counts one label-issue attempt: issued when err is nil, else
-// rejected with the reason of err.
-func (u *IssueLabel) recordOutcome(ctx context.Context, err error) {
+// recordOutcome counts one label-issue attempt (outbound or return): issued
+// when err is nil, else rejected with the reason of err.
+func (w writer) recordOutcome(ctx context.Context, err error) {
 	if err == nil {
-		u.metrics().LabelIssued(ctx)
+		w.metrics().LabelIssued(ctx)
 		return
 	}
-	u.metrics().LabelRejected(ctx, rejectionReason(err))
+	w.metrics().LabelRejected(ctx, rejectionReason(err))
 }
 
 func rejectionReason(err error) string {

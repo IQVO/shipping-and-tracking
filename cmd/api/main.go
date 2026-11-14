@@ -160,7 +160,7 @@ func buildDeps(pool *pgxpool.Pool, cfg config) usecases.Deps {
 
 func buildServer(d usecases.Deps, pool *pgxpool.Pool, readiness *inboundhttp.Readiness) *inboundhttp.Server {
 	return &inboundhttp.Server{
-		IssueLabel: usecases.NewIssueLabel(d), VoidLabel: usecases.NewVoidLabel(d),
+		IssueLabel: usecases.NewIssueLabel(d), IssueReturnLabel: usecases.NewIssueReturnLabel(d), VoidLabel: usecases.NewVoidLabel(d),
 		RecordScan: usecases.NewRecordScan(d), ReportCarrierEvent: usecases.NewReportCarrierEvent(d),
 		GetJourney: usecases.NewGetJourney(d),
 		Idempotency: func(route string) func(http.Handler) http.Handler {

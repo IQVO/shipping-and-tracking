@@ -17,15 +17,19 @@ type Label struct {
 	LabelRef       string     `json:"labelRef"`
 	TrackingNumber string     `json:"trackingNumber"`
 	Carrier        string     `json:"carrier"`
-	PONumber       string     `json:"poNumber"`
+	PONumber       string     `json:"poNumber,omitempty"`
 	PackageNo      int        `json:"packageNo"`
-	AssignmentID   string     `json:"assignmentId"`
+	AssignmentID   string     `json:"assignmentId,omitempty"`
 	OrderID        string     `json:"orderId"`
 	Tier           string     `json:"tier"`
 	Status         string     `json:"status"`
 	IssuedAt       time.Time  `json:"issuedAt"`
 	VoidReason     string     `json:"voidReason,omitempty"`
 	VoidedAt       *time.Time `json:"voidedAt,omitempty"`
+	// Purpose and ReturnAuthorizationID appear only on a reverse label; an
+	// outbound label omits both (ADR 0017).
+	Purpose               string `json:"purpose,omitempty"`
+	ReturnAuthorizationID string `json:"returnAuthorizationId,omitempty"`
 }
 
 // LabelFrom copies a label into its view.
@@ -38,6 +42,9 @@ func LabelFrom(l *label.ShippingLabel) Label {
 	if !l.VoidedAt().IsZero() {
 		at := l.VoidedAt()
 		v.VoidedAt = &at
+	}
+	if l.Purpose() == label.PurposeReturn {
+		v.Purpose, v.ReturnAuthorizationID = string(l.Purpose()), l.ReturnAuthorizationID()
 	}
 	return v
 }
