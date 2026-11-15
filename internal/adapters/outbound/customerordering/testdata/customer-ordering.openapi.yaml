@@ -403,6 +403,62 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /notification-policy:
+    get:
+      tags: [Operations]
+      operationId: getNotificationPolicy
+      summary: Read the notification policy (who notifies the shopper per event family)
+      description: >-
+        The versioned NotificationPolicy document (ADR 0017). Version 0 is the
+        built-in default: every family NOBODY, nothing delivered. The document
+        decides the notifier stamp of every ShopperNoticeDecided fact; the
+        notice itself is delivered outside the network (the marketplace
+        notifier is the storefront consuming the event).
+      x-pagination-exempt: view
+      responses:
+        '200':
+          description: The current policy document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPolicy'
+    put:
+      tags: [Operations]
+      operationId: putNotificationPolicy
+      summary: Publish the next version of the notification policy (whole document)
+      description: >-
+        Whole-document PUT (ADR 0017): the body carries one row per family.
+        The next version number is derived (current + 1); every version is
+        kept. Publishing version 1 is what wakes a family up — until then the
+        posture is silence. No event is raised: v1 is analytics-free.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutNotificationPolicyRequest'
+      responses:
+        '200':
+          description: The published policy document.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: concurrent-update, or the Idempotency-Key was already used with a different request (idempotency-key-reused).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
   /healthz:
     get:
       tags: [Operations]
@@ -558,6 +614,51 @@ components:
         status:
           type: string
           example: ok
+    NotificationPolicy:
+      type: object
+      description: >-
+        The versioned notification policy document (ADR 0017). Version 0 is the
+        built-in default (every family NOBODY, publishedAt absent); a published
+        version is immutable and every version is kept.
+      required: [version, rows]
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          example: 1
+        rows:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/NotificationPolicyRow'
+        publishedAt:
+          type: string
+          format: date-time
+          description: Absent on version 0.
+    NotificationPolicyRow:
+      type: object
+      description: The decision of one family.
+      required: [family, notifier]
+      properties:
+        family:
+          type: string
+          enum: [DELAY_EXPECTED, ETA_WINDOW_ASSIGNED, DELIVERY_POINT_ADVISORY, GROUP_SHIPPED, GROUP_DELIVERED, GROUP_LOST, GROUP_RETURNED]
+        notifier:
+          type: string
+          enum: [MARKETPLACE, SELLER, NOBODY]
+    PutNotificationPolicyRequest:
+      type: object
+      description: >-
+        The whole document: one row per family, each family exactly once.
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/NotificationPolicyRow'
     Problem:
       type: object
       description: RFC 9457 problem details. type is /problems/<slug>.
