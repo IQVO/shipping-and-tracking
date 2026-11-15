@@ -1,0 +1,7 @@
+{
+  "type": "/problems/not-found",
+  "title": "Not found",
+  "status": 404,
+  "detail": "No order with this id.",
+  "instance": "/orders/co-404/ship-to"
+}

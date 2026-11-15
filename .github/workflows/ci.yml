@@ -115,6 +115,26 @@ jobs:
           version: v2.14.0
           args: --timeout=5m --enable-only revive --issues-exit-code=0
 
+  # Consumer contract testing: every producer spec this repo consumes is a
+  # byte copy pinned in contracts/pinned.json (shipping-and-tracking reads one
+  # sibling: customer-ordering). The job fails when a pin in contracts/pinned.json
+  # differs from the producer's develop. The producer repos are readable by
+  # this token; a producer that cannot be read fails the job (exit 2), never
+  # passes it.
+  pinned-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Pins equal the producer's develop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/harness/pinned_contract_gate.py
+      - name: The gate's own tests
+        run: python3 scripts/harness/test_pinned_contract_gate.py
+
   # ============================================================
   # CLASSIFICATION: UNIT TESTING
   # ============================================================

@@ -78,3 +78,11 @@ the transaction. The address lives in memory for the duration of the request onl
   `LASTMILE_CONSUMER_GROUP`, `CATALOG_CONSUMER_GROUP` and `ST_AREAS_CONSUMER_GROUP` (the node-topology
   reader, ADR 0015). A missing one is a boot error naming it.
 - No other sibling is contacted at runtime.
+
+## Addendum 2026-11-13: current state
+
+The node-topology consumer also handles the node lifecycle events `NodeRegistered`, `NodeActivated`,
+`NodeSuspended` and `NodeRetired` (`internal/adapters/inbound/kafka/handlers_nodetopology.go`,
+`NodeTopologyHandlers`, ADR 0016). They maintain the pickup-point read model and are not rows of the table
+above, so "types not in the table are acknowledged and ignored" no longer holds for them. With them the
+contract (`apis/asyncapi.yaml`) lists 14 consumed types from five topics.

@@ -1,0 +1,7 @@
+{
+  "type": "/problems/unavailable",
+  "title": "Unavailable",
+  "status": 503,
+  "detail": "customer-ordering is not answering right now.",
+  "instance": "/orders/co-1/ship-to"
+}

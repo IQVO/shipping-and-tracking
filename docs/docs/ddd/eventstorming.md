@@ -2,7 +2,7 @@
 id: eventstorming
 title: EventStorming
 sidebar_label: EventStorming
-description: "Process-level EventStorming boards for Shipping & Tracking: label issue and void, timeline consolidation, and exceptions and terminal outcomes, with the hotspots that remain."
+description: "Process-level EventStorming boards for Shipping & Tracking: label issue and void, timeline consolidation (including the day-of ETA window and the delivery-point flag), and exceptions and terminal outcomes, with the hotspots that remain."
 ---
 
 # EventStorming
@@ -163,6 +163,42 @@ flowchart TB
 
 Source: `internal/adapters/inbound/kafka/handlers.go` (`LastMileHandlers`). A failed attempt returns the journey to `AT_STATION` and raises `PackageScanned` only.
 
+### 2c. Day-of ETA window and delivery-point flag
+
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 14, "rankSpacing": 30}}}%%
+flowchart TB
+    LM["last-mile-delivery"]:::external
+    F6["StopEtaWindowAssigned"]:::event
+    F7["DeliveryPointFlagged"]:::event
+    P0["Policy: a stop event reaches<br/>every package of the stop"]:::policy
+    C1["ApplyEtaWindows<br/>AssignEta"]:::command
+    C2["RelayDeliveryPointFlag<br/>FlagDeliveryPoint"]:::command
+    G1["PackageJourney"]:::aggregate
+    E1["PackageEtaWindowAssigned"]:::event
+    E2["PackageDeliveryPointFlagged"]:::event
+    CO["customer-ordering"]:::external
+    LM --> F6
+    LM --> F7
+    F6 --> P0
+    F7 --> P0
+    P0 --> C1
+    P0 --> C2
+    C1 --> G1
+    C2 --> G1
+    G1 --> E1
+    G1 --> E2
+    E1 --> CO
+    E2 --> CO
+    classDef command fill:#a5d8ff,stroke:#1971c2,color:#000
+    classDef aggregate fill:#ffec99,stroke:#f08c00,color:#000
+    classDef event fill:#ffc078,stroke:#e8590c,color:#000
+    classDef policy fill:#d0bfff,stroke:#7048e8,color:#000
+    classDef external fill:#fcc2d7,stroke:#c2255c,color:#000
+```
+
+Source: `internal/adapters/inbound/kafka/handlers_lastmile.go` (`etaHandler`, `flagHandler`), `internal/application/usecases/eta.go` (`ApplyEtaWindows`), `internal/application/usecases/point_flag.go` (`RelayDeliveryPointFlag`), `internal/domain/journey/journey_eta.go`, `internal/domain/journey/journey_point_flag.go` (ADR 0013, ADR 0014). Neither is a scan: the journey state does not change, and each raises one event per package of the stop. A stale window or flag, a closed journey and an unknown tracking number are counted and acknowledged without an event.
+
 ## 3. Exceptions and terminal outcomes
 
 ```mermaid
@@ -212,12 +248,15 @@ Source: `internal/application/usecases/sweep.go` (`SweepSilence`, `decide`), `in
 | --- | --- | --- |
 | `IssueLabel`, `VoidLabel` | Command | `usecases/labels.go` |
 | Start journey, `RecordScan`, `RaiseException`, `ReturnToSender`, `DeclareLost` | Command | `journey/journey.go`, `usecases/scans.go`, `usecases/sweep.go` |
+| `ApplyEtaWindows` (`AssignEta`), `RelayDeliveryPointFlag` (`FlagDeliveryPoint`) | Command | `usecases/eta.go`, `usecases/point_flag.go` |
 | `ShippingLabel`, `PackageJourney` | Aggregate | `domain/label`, `domain/journey` |
-| `LabelIssued`, `LabelVoided`, `PackageScanned`, `PackageHandedOver`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost`, `PackageEtaWindowAssigned` | Domain event (own) | `label/events.go`, `journey/events.go` |
-| `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted`, `PackageReturnInitiated`, `StopEtaWindowAssigned` | Domain event (neighbour) | `inbound/kafka/handlers.go` |
-| Handover on first pickup departure, exception on silence, lost after 48 hours | Policy | `journey.apply`, `journey.SilenceWindow`, `Journey.Lost` |
+| `LabelIssued`, `LabelVoided`, `PackageScanned`, `PackageHandedOver`, `PackageDelivered`, `PackageExceptionRaised`, `PackageReturned`, `PackageLost`, `PackageEtaWindowAssigned`, `PackageDeliveryPointFlagged` | Domain event (own) | `label/events.go`, `journey/events.go` |
+| `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted`, `PackageReturnInitiated`, `StopEtaWindowAssigned`, `DeliveryPointFlagged` | Domain event (neighbour) | `inbound/kafka/handlers.go`, `inbound/kafka/handlers_lastmile.go` |
+| Handover on first pickup departure, exception on silence, lost after 48 hours, a stop event reaches every package of the stop | Policy | `journey.apply`, `journey.SilenceWindow`, `Journey.Lost`, `etaHandler`, `flagHandler` |
 | `catalog_dimensions` | Read model | `ports.CatalogDimensionsView` |
 | `vendor-connectivity`, `customer-ordering`, `linehaul-transportation`, `last-mile-delivery`, `delivery-promise`, `order-sourcing`, `node-performance` | External system | `apis/asyncapi.yaml`, `outbound/customerordering` |
+
+Not drawn on any board: the carrier handoff (`PackageHandedToCarrier`, ADR 0015), the pickup collection (`PackageReadyForCollection`, `PackageCollected`, ADR 0016) and the consumed `ServiceAreaAssigned` and node lifecycle events (`NodeRegistered`, `NodeActivated`, `NodeSuspended`, `NodeRetired`). They are in [Domain events](/docs/ddd/domain-events).
 
 ## Hotspots and where they come from
 
