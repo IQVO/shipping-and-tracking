@@ -47,12 +47,12 @@ Each entry reads symptom, cause, check, fix. Log message texts are the ones the 
 | 409 `tracking-number-taken` | The generated tracking number collided with an existing one twice in a row (the use case retries once with a fresh number) | log `request failed` | Retry with a new key |
 | 409 `concurrent-update` | Two writers changed the same aggregate; optimistic `version` check lost | repeated occurrences mean a hot aggregate | Retry. The Kafka consumers also retry it |
 | 404 `not-found` on `GET /journeys/{trackingNumber}` or `POST /labels/{ref}/voids` | Unknown reference. Journey rows are created by label issuing | `SELECT state FROM package_journeys WHERE tracking_number = $1` | Check the tracking number or label reference |
-| 409 `void-after-handover` | The package left the sender (state beyond `LABELLED`) | journey state | A handed-over package cannot be voided |
+| 409 `void-after-handover` | The package left the sender and the journey is still open (`HANDED_OVER`, `IN_TRANSIT`, `AT_STATION` or `OUT_FOR_DELIVERY`). A journey already `DELIVERED`, `RETURNED`, `LOST` or `VOIDED` answers `journey-closed` instead: the closed check comes first (`internal/domain/journey/journey_close.go:82-87`) | journey state | A handed-over package cannot be voided |
 | 409 `duplicate-scan` | The `scanId` was already recorded for that journey | `SELECT * FROM journey_scans WHERE tracking_number = $1` | Nothing to fix, the scan is stored once |
 | 409 `scan-out-of-order` | The scan is older than the last applied scan; it is stored with `applied=false` | the `at` of the scan versus `last_scan_at` | Expected for late data. It does not move the state |
 | 409 `illegal-transition` | The scan type has no edge from the current state (see the state machine in [Use cases](/docs/ddd/use-cases)); stored with `applied=false` | `state` of the journey | Send the intermediate scans first, or ignore |
-| 409 `journey-closed` | The journey is `DELIVERED`, `RETURNED`, `LOST` or `VOIDED` | journey state | Closed journeys accept no scans |
-| 404 `not-found` on `POST /labels/{ref}:void` or a path that matches no route | The void route is `POST /labels/{labelRef}:void` with a literal colon | the URL | Do not encode the colon as a path separator |
+| 409 `journey-closed` | The journey is `DELIVERED`, `RETURNED`, `LOST` or `VOIDED` | journey state | Closed journeys accept no scans, and a void of one answers `journey-closed`, not `void-after-handover` |
+| 404 `not-found` on `POST /labels/{ref}:void` or a path that matches no route | The old colon-suffix void route is gone (ADR 0010, no alias); the void route is `POST /labels/{labelRef}/voids` (`internal/adapters/inbound/http/server.go:25`, `TestRetiredRoutesAreGone`) | the URL | Call `/labels/{labelRef}/voids` |
 | 422 `validation-failed` with a body that looks fine | A NUL character (U+0000) in the query or body is rejected as a client error by `rejectNUL` instead of reaching Postgres; a NUL in the path is a 404 | the request bytes | Remove the NUL |
 
 ## Events
