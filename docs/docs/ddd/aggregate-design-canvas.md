@@ -132,7 +132,7 @@ Every applied scan raises `PackageScanned` with the new `state`.
 | Scans apply in time order; an older one is stored but does not move the state | `journey.ErrScanOutOfOrder` |
 | `DELIVERED`, `RETURNED`, `LOST` and `VOIDED` are terminal | `journey.ErrJourneyClosed` |
 | Only the edges of `next` exist (forward only); a scan with no edge from the current state is stored unapplied | `shared.ErrIllegalTransition` |
-| A label can be voided only while the journey is `LABELLED` | `journey.ErrVoidAfterHandover` |
+| A label can be voided only while the journey is `LABELLED` (an open journey past it: `ErrVoidAfterHandover`; a closed one: `ErrJourneyClosed`, checked first) | `journey.ErrVoidAfterHandover` |
 | Scan id 1 to 256 characters, node id 1 to 64, known scan type, `at` required | `ScanInput.validate` |
 | Concurrent writers: the stored version must be the aggregate's version minus one | `ports.ErrConcurrentUpdate` |
 

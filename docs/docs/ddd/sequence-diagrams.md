@@ -86,7 +86,10 @@ sequenceDiagram
     else ISSUED
         UC->>DB: load the journey of the same trackingNumber
         UC->>A: journey Void
-        alt journey past LABELLED
+        alt journey closed (DELIVERED, RETURNED, LOST or VOIDED)
+            A-->>UC: ErrJourneyClosed
+            Note over H: 409 journey-closed
+        else journey open and past LABELLED
             A-->>UC: ErrVoidAfterHandover
             Note over H: 409 void-after-handover
         else journey LABELLED

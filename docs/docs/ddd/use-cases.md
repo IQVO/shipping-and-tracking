@@ -66,7 +66,7 @@ Source: `internal/application/usecases/labels.go`, `internal/domain/label/label.
 ## VoidLabel
 
 - **Trigger:** operations tooling. REST `POST /labels/{labelRef}/voids`, body `reason` (1 to 500 characters), `Idempotency-Key` required.
-- **Invariants:** a label can be voided only while its journey is still `LABELLED` (`ErrVoidAfterHandover` once handed over); a `VOIDED` label is returned unchanged and nothing is published.
+- **Invariants:** a label can be voided only while its journey is still `LABELLED` (`ErrVoidAfterHandover` once handed over and still open; a journey already `DELIVERED`, `RETURNED`, `LOST` or `VOIDED` answers `ErrJourneyClosed`, checked first in `Journey.Void`, `journey_close.go:82-87`); a `VOIDED` label is returned unchanged and nothing is published.
 - **Flow:** load the label, load the journey of the same tracking number, close the journey as `VOIDED` (no journey event), move the label `ISSUED` to `VOIDED` with the reason, save both, enqueue `LabelVoided`. `200` with the label.
 - **Errors:** `not-found`, `void-after-handover`, `journey-closed`, `validation-failed`.
 
