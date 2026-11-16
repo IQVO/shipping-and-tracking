@@ -31,7 +31,7 @@ ADRs, specs, tests, fixtures or the README.
 ## Gates
 
 `make check` (fmt, vet, build, lint, `go test -race`), `make coverage` (at least 90% over domain and application),
-`make bdd`, `make arch-test`, `make mutation` (gremlins over every `internal/domain/*` package, thresholds 90/90),
+`make bdd`, `make arch-test`, `make mutation` (gremlins over every `internal/domain/*` package, thresholds 97/99, see `MUTATION.md`),
 `make integration` (needs Docker; includes the real-wiring test of `cmd/api`). The pre-push hook runs `make check`.
 
 ## Rules for changes
