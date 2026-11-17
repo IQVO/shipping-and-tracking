@@ -1169,9 +1169,11 @@ components:
                 packageNo: {"type": "integer", "minimum": 1}
                 tier: {"$ref": "#/components/schemas/ServiceTier"}
                 carrier: {"type": "string"}
-                stopKey: {"type": "string", "description": "Opaque keyed hash (HMAC-SHA-256, hex) of the normalized address; equal addresses give equal keys. A pickup label keys the point id, so every package of one point shares one stop (ADR 0016)."}
-                destinationPostalPrefix: {"type": "string", "description": "Leading characters of the ship-to postal code (ADR 0002 A10); a pickup label carries the point's own prefix (ADR 0016)."}
+                stopKey: {"type": "string", "description": "Opaque keyed hash (HMAC-SHA-256, hex) of the normalized address; equal addresses give equal keys. A pickup label keys the point id, so every package of one point shares one stop (ADR 0016). A reverse label keys the same ship-to as the outbound label of the same order, so its key EQUALS the outbound key (ADR 0017)."}
+                destinationPostalPrefix: {"type": "string", "description": "Leading characters of the ship-to postal code (ADR 0002 A10); a pickup label carries the point's own prefix (ADR 0016); a reverse label carries the RETURN DESTINATION's prefix (ADR 0017)."}
                 pickupPointId: {"type": "string", "description": "The pickup point of a pickup label; omitted on a ship-to label (ADR 0016)."}
+                purpose: {"type": "string", "enum": ["RETURN"], "description": "Present only on a reverse label of a customer return (ADR 0017); omitted on an outbound label. Tolerant consumers ignore it."}
+                returnAuthorizationId: {"type": "string", "description": "The return authorization a reverse label belongs to (ADR 0017); omitted on an outbound label."}
 
     LabelVoidedEvent:
       allOf:

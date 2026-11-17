@@ -1,0 +1,70 @@
+---
+id: issue-return-label
+title: "Issue the reverse label of one package of a return (IssueReturnLabel)"
+description: "In-org route called by customer-returns (ADR 0017), the reverse twin of POST /labels. Reads the ship-to of orderId from customer-ordering BEFORE the transaction opens and derives the stopKey exactly like the outbound label of the same order (same secret over the same normalized address), so a return pickup stop groups with the outbound delivery stop by construction; destinationPostalPrefix is the RETURN DESTINATION's prefix (the returns centre), which only the caller knows. The label rides the ground carrier (RN-GROUND), starts NO package journey and seals NO ship-to snapshot; scans of the reverse package are counted-and-acknowledged unknowns, and shopper-facing return tracking is customer-returns' authorization view. The response is a ReturnLabel: no poNumber, no assignmentId, purpose RETURN and the returnAuthorizationId. One label per (returnAuthorizationId, packageNo). A replay of the same Idempotency-Key returns the first response."
+sidebar_label: "Issue the reverse label of one package of a return (IssueReturnLabel)"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "post api-method"
+info_path: docs/api-reference/rest/shipping-tracking-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Issue the reverse label of one package of a return (IssueReturnLabel)"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/return-labels"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+In-org route called by customer-returns (ADR 0017), the reverse twin of POST /labels. Reads the ship-to of orderId from customer-ordering BEFORE the transaction opens and derives the stopKey exactly like the outbound label of the same order (same secret over the same normalized address), so a return pickup stop groups with the outbound delivery stop by construction; destinationPostalPrefix is the RETURN DESTINATION's prefix (the returns centre), which only the caller knows. The label rides the ground carrier (RN-GROUND), starts NO package journey and seals NO ship-to snapshot; scans of the reverse package are counted-and-acknowledged unknowns, and shopper-facing return tracking is customer-returns' authorization view. The response is a ReturnLabel: no poNumber, no assignmentId, purpose RETURN and the returnAuthorizationId. One label per (returnAuthorizationId, packageNo). A replay of the same Idempotency-Key returns the first response.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./issue-return-label.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./issue-return-label.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./issue-return-label.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

@@ -212,38 +212,60 @@ type VoidLabel struct{ writer }
 func NewVoidLabel(d Deps) *VoidLabel { return &VoidLabel{writer{d}} }
 
 // Execute voids the label. A label that is already VOIDED is returned unchanged
-// and publishes nothing. Errors: ports.ErrNotFound, shared.ErrValidation,
+// and publishes nothing. A RETURN label has no journey to close (ADR 0017).
+// The view is the one of the label's kind: views.Label for an outbound label,
+// views.ReturnLabel for a reverse one.
+// Errors: ports.ErrNotFound, shared.ErrValidation,
 // journey.ErrVoidAfterHandover.
-func (u *VoidLabel) Execute(ctx context.Context, ref label.Ref, reason string) (views.Label, error) {
-	return transact(ctx, u.UoW, func(ctx context.Context) (views.Label, error) {
+func (u *VoidLabel) Execute(ctx context.Context, ref label.Ref, reason string) (views.AnyLabel, error) {
+	return transact(ctx, u.UoW, func(ctx context.Context) (views.AnyLabel, error) {
 		l, err := u.Labels.Get(ctx, ref)
 		if err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if l.Status() == label.StatusVoided {
-			return views.LabelFrom(l), nil
+			return views.AnyLabelFrom(l), nil
+		}
+		now := u.now()
+		if l.Purpose() == label.PurposeReturn {
+			return u.voidReturn(ctx, l, reason, now)
 		}
 		j, err := u.Journeys.Get(ctx, l.TrackingNumber())
 		if err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
-		now := u.now()
 		if err := j.Void(now); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		events, err := l.Void(reason, now)
 		if err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if err := u.Labels.Save(ctx, l); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if err := u.Journeys.Save(ctx, j); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if err := u.publish(ctx, events); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
-		return views.LabelFrom(l), nil
+		return views.AnyLabelFrom(l), nil
 	})
+}
+
+// voidReturn voids a reverse label: there is no journey and no handover to
+// refuse (ADR 0017).
+func (u *VoidLabel) voidReturn(ctx context.Context, l *label.ShippingLabel, reason string, now time.Time) (views.AnyLabel, error) {
+	events, err := l.Void(reason, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := u.Labels.Save(ctx, l); err != nil {
+		return nil, err
+	}
+	if err := u.publish(ctx, events); err != nil {
+		return nil, err
+	}
+	return views.AnyLabelFrom(l), nil
 }

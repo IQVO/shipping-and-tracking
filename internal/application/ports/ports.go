@@ -28,8 +28,12 @@ type LabelRepository interface {
 	// FindByPackage returns the label of (poNumber, packageNo), or ErrNotFound.
 	// It backs the ErrLabelAlreadyIssued pre-check.
 	FindByPackage(ctx context.Context, poNumber string, packageNo int) (*label.ShippingLabel, error)
+	// FindByReturnPackage returns the RETURN label of
+	// (returnAuthorizationId, packageNo), or ErrNotFound (ADR 0017).
+	FindByReturnPackage(ctx context.Context, returnAuthorizationID string, packageNo int) (*label.ShippingLabel, error)
 	// Save persists the label under the concurrency rule of the package
-	// comment. A second label for the same (poNumber, packageNo) is
+	// comment. A second label for the same (poNumber, packageNo), or for the
+	// same (returnAuthorizationId, packageNo) of a return, is
 	// label.ErrLabelAlreadyIssued and a second label with the same tracking
 	// number is label.ErrTrackingNumberTaken (unique indexes).
 	Save(ctx context.Context, l *label.ShippingLabel) error

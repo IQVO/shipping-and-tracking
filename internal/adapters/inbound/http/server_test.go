@@ -41,7 +41,7 @@ func newFixtureLogged(t *testing.T, logger *slog.Logger) *fixture {
 		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{},
 	}
 	srv := httptest.NewServer(inbound.NewRouter(&inbound.Server{
-		IssueLabel: usecases.NewIssueLabel(d), VoidLabel: usecases.NewVoidLabel(d),
+		IssueLabel: usecases.NewIssueLabel(d), IssueReturnLabel: usecases.NewIssueReturnLabel(d), VoidLabel: usecases.NewVoidLabel(d),
 		RecordScan: usecases.NewRecordScan(d), GetJourney: usecases.NewGetJourney(d),
 	}, logger, ""))
 	t.Cleanup(srv.Close)

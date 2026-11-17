@@ -15,11 +15,13 @@ import (
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 )
 
-// Constraint names of 0001_schema.up.sql that map to domain errors.
+// Constraint names of 0001_schema.up.sql and 0007_label_purpose.up.sql that
+// map to domain errors.
 const (
-	labelPackageKey  = "shipping_labels_package_key"
-	labelTrackingKey = "shipping_labels_tracking_key"
-	labelPKey        = "shipping_labels_pkey"
+	labelPackageKey       = "shipping_labels_package_key"
+	labelTrackingKey      = "shipping_labels_tracking_key"
+	labelReturnPackageKey = "shipping_labels_return_package_key"
+	labelPKey             = "shipping_labels_pkey"
 )
 
 // unique reports whether err is a unique violation, and of which constraint.
@@ -78,21 +80,25 @@ func NewLabelRepo(pool *pgxpool.Pool) *LabelRepo { return &LabelRepo{pool: pool}
 
 var _ ports.LabelRepository = (*LabelRepo)(nil)
 
-const labelColumns = `label_ref, tracking_number, po_number, package_no, assignment_id, order_id, tier, carrier, stop_key,
-	destination_postal_prefix, status, issued_at, void_reason, voided_at, version`
+const labelColumns = `label_ref, tracking_number, po_number, package_no, assignment_id, order_id, purpose, return_authorization_id,
+	tier, carrier, stop_key, destination_postal_prefix, status, issued_at, void_reason, voided_at, version`
 
 func scanLabel(row pgx.Row) (*label.ShippingLabel, error) {
 	var (
-		s      label.Snapshot
-		tier   string
-		status string
-		reason *string
-		voided *time.Time
+		s              label.Snapshot
+		tier           string
+		status         string
+		purpose        string
+		returnAuthNull *string
+		reason         *string
+		voided         *time.Time
 	)
-	if err := row.Scan(&s.Ref, &s.TrackingNumber, &s.PONumber, &s.PackageNo, &s.AssignmentID, &s.OrderID, &tier, &s.Carrier,
-		&s.StopKey, &s.DestinationPostalPrefix, &status, &s.IssuedAt, &reason, &voided, &s.Version); err != nil {
+	if err := row.Scan(&s.Ref, &s.TrackingNumber, &s.PONumber, &s.PackageNo, &s.AssignmentID, &s.OrderID, &purpose,
+		&returnAuthNull, &tier, &s.Carrier, &s.StopKey, &s.DestinationPostalPrefix, &status, &s.IssuedAt, &reason,
+		&voided, &s.Version); err != nil {
 		return nil, err
 	}
+	s.Purpose, s.ReturnAuthorizationID = label.Purpose(purpose), deref(returnAuthNull)
 	s.Tier, s.Status, s.VoidReason, s.VoidedAt = tierOf(tier), label.Status(status), deref(reason), orZero(voided)
 	s.IssuedAt = s.IssuedAt.UTC()
 	return label.Restore(s)
@@ -117,13 +123,25 @@ func (r *LabelRepo) FindByPackage(ctx context.Context, poNumber string, packageN
 	return l, err
 }
 
+// FindByReturnPackage implements ports.LabelRepository.
+func (r *LabelRepo) FindByReturnPackage(ctx context.Context, returnAuthorizationID string, packageNo int) (*label.ShippingLabel, error) {
+	l, err := scanLabel(queryFor(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+labelColumns+` FROM shipping_labels WHERE purpose = 'RETURN' AND return_authorization_id = $1 AND package_no = $2`,
+		returnAuthorizationID, packageNo))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("%w: return label of package %d of %s", ports.ErrNotFound, packageNo, returnAuthorizationID)
+	}
+	return l, err
+}
+
 // Save implements ports.LabelRepository.
 func (r *LabelRepo) Save(ctx context.Context, l *label.ShippingLabel) error {
 	s := l.Snapshot()
 	q := queryFor(ctx, r.pool)
 	if s.Version == 1 {
-		_, err := q.Exec(ctx, `INSERT INTO shipping_labels (`+labelColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-			string(s.Ref), string(s.TrackingNumber), s.PONumber, s.PackageNo, s.AssignmentID, s.OrderID, string(s.Tier), s.Carrier,
+		_, err := q.Exec(ctx, `INSERT INTO shipping_labels (`+labelColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+			string(s.Ref), string(s.TrackingNumber), s.PONumber, s.PackageNo, s.AssignmentID, s.OrderID, string(s.Purpose),
+			nullString(s.ReturnAuthorizationID), string(s.Tier), s.Carrier,
 			s.StopKey, s.DestinationPostalPrefix, string(s.Status), s.IssuedAt, nullString(s.VoidReason), nullTime(s.VoidedAt), s.Version)
 		return mapLabelInsertError(err, s)
 	}
@@ -144,7 +162,10 @@ func mapLabelInsertError(err error, s label.Snapshot) error {
 	switch {
 	case !ok:
 		return err
-	case c == labelPackageKey:
+	case c == labelPackageKey || c == labelReturnPackageKey:
+		if s.Purpose == label.PurposeReturn {
+			return fmt.Errorf("%w: package %d of return %s", label.ErrLabelAlreadyIssued, s.PackageNo, s.ReturnAuthorizationID)
+		}
 		return fmt.Errorf("%w: package %d of %s", label.ErrLabelAlreadyIssued, s.PackageNo, s.PONumber)
 	case c == labelTrackingKey:
 		return fmt.Errorf("%w: %s", label.ErrTrackingNumberTaken, s.TrackingNumber)

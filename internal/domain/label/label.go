@@ -39,6 +39,22 @@ const (
 	StatusVoided Status = "VOIDED"
 )
 
+// Purpose is which direction of the network a label serves (ADR 0017).
+type Purpose string
+
+// The two label purposes.
+const (
+	// PurposeOutbound is the default: the label of a package riding out to
+	// the shopper.
+	PurposeOutbound Purpose = "OUTBOUND"
+	// PurposeReturn is the reverse label of a customer return: the package
+	// rides from the shopper back into the network.
+	PurposeReturn Purpose = "RETURN"
+)
+
+// Valid reports whether p is one of the two purposes.
+func (p Purpose) Valid() bool { return p == PurposeOutbound || p == PurposeReturn }
+
 // Bounds shared by the REST contract and the Postgres columns.
 const (
 	// MaxPackageNo is the Postgres integer ceiling for a package number.
@@ -66,6 +82,16 @@ func CarrierFor(t shared.Tier) string {
 	return CarrierGround
 }
 
+// carrierFor returns the carrier of a label: a reverse label always rides the
+// ground carrier whatever its tier (ADR 0017); an outbound label follows its
+// tier.
+func carrierFor(p Purpose, t shared.Tier) string {
+	if p == PurposeReturn {
+		return CarrierGround
+	}
+	return CarrierFor(t)
+}
+
 // ShippingLabel is the aggregate root.
 type ShippingLabel struct {
 	ref           Ref
@@ -74,6 +100,8 @@ type ShippingLabel struct {
 	packageNo     int
 	assignmentID  string
 	orderID       string
+	purpose       Purpose
+	returnAuthID  string
 	tier          shared.Tier
 	carrier       string
 	stopKey       string
@@ -94,6 +122,8 @@ type Snapshot struct {
 	PackageNo               int
 	AssignmentID            string
 	OrderID                 string
+	Purpose                 Purpose
+	ReturnAuthorizationID   string
 	Tier                    shared.Tier
 	Carrier                 string
 	StopKey                 string
@@ -108,12 +138,17 @@ type Snapshot struct {
 
 // NewLabel is the input of Issue.
 type NewLabel struct {
-	Ref                     Ref
-	TrackingNumber          shared.TrackingNumber
-	PONumber                string
-	PackageNo               int
-	AssignmentID            string
-	OrderID                 string
+	Ref            Ref
+	TrackingNumber shared.TrackingNumber
+	PONumber       string
+	PackageNo      int
+	AssignmentID   string
+	OrderID        string
+	// Purpose defaults to OUTBOUND when empty (ADR 0017).
+	Purpose Purpose
+	// ReturnAuthorizationID links a RETURN label to its return authorization;
+	// it must be empty on an outbound label.
+	ReturnAuthorizationID   string
 	Tier                    shared.Tier
 	StopKey                 string
 	DestinationPostalPrefix string
@@ -129,10 +164,17 @@ func checkNew(in NewLabel) error {
 	if !in.TrackingNumber.Valid() {
 		return shared.Invalid("trackingNumber %q is not a valid id", in.TrackingNumber)
 	}
-	for _, f := range [][2]string{{"poNumber", in.PONumber}, {"assignmentId", in.AssignmentID}, {"orderId", in.OrderID}} {
-		if !shared.ValidID(f[1]) {
-			return shared.Invalid("%s %q is not a valid id", f[0], f[1])
-		}
+	if in.Purpose == "" {
+		in.Purpose = PurposeOutbound
+	}
+	if !in.Purpose.Valid() {
+		return shared.Invalid("purpose %q is not OUTBOUND or RETURN", in.Purpose)
+	}
+	if !shared.ValidID(in.OrderID) {
+		return shared.Invalid("orderId %q is not a valid id", in.OrderID)
+	}
+	if err := checkIdentity(in); err != nil {
+		return err
 	}
 	if in.PackageNo < 1 || in.PackageNo > MaxPackageNo {
 		return shared.Invalid("packageNo must be between 1 and %d", MaxPackageNo)
@@ -141,6 +183,36 @@ func checkNew(in NewLabel) error {
 		return shared.Invalid("tier %q is not SAME_DAY, NEXT_DAY, TWO_DAY or STANDARD", in.Tier)
 	}
 	return checkDerived(in.StopKey, in.DestinationPostalPrefix)
+}
+
+// checkIdentity validates the purpose-shaped identity of a label: an outbound
+// label hangs off (poNumber, packageNo) and a fulfillment assignment, a
+// reverse label off its return authorization alone (ADR 0017).
+func checkIdentity(in NewLabel) error {
+	if in.Purpose == PurposeReturn {
+		return checkReturnIdentity(in)
+	}
+	for _, f := range [][2]string{{"poNumber", in.PONumber}, {"assignmentId", in.AssignmentID}} {
+		if !shared.ValidID(f[1]) {
+			return shared.Invalid("%s %q is not a valid id", f[0], f[1])
+		}
+	}
+	if in.ReturnAuthorizationID != "" {
+		return shared.Invalid("an OUTBOUND label carries no returnAuthorizationId")
+	}
+	return nil
+}
+
+// checkReturnIdentity: a reverse label names its return authorization and
+// carries neither a purchase order nor an assignment.
+func checkReturnIdentity(in NewLabel) error {
+	if !shared.ValidID(in.ReturnAuthorizationID) {
+		return shared.Invalid("returnAuthorizationId %q is not a valid id", in.ReturnAuthorizationID)
+	}
+	if in.PONumber != "" || in.AssignmentID != "" {
+		return shared.Invalid("a RETURN label carries no poNumber or assignmentId")
+	}
+	return nil
 }
 
 // checkDerived validates the two values derived from the address.
@@ -187,20 +259,26 @@ func validPrefix(s string) bool {
 }
 
 // Issue creates an ISSUED label at version 1 and raises LabelIssued. The
-// carrier is chosen from the tier.
+// carrier is chosen from the tier (the ground carrier for a RETURN label,
+// ADR 0017).
 func Issue(in NewLabel, now time.Time) (*ShippingLabel, []shared.Event, error) {
 	if err := checkNew(in); err != nil {
 		return nil, nil, err
 	}
+	if in.Purpose == "" {
+		in.Purpose = PurposeOutbound
+	}
 	l := &ShippingLabel{
 		ref: in.Ref, tracking: in.TrackingNumber, poNumber: in.PONumber, packageNo: in.PackageNo,
-		assignmentID: in.AssignmentID, orderID: in.OrderID, tier: in.Tier, carrier: CarrierFor(in.Tier),
+		assignmentID: in.AssignmentID, orderID: in.OrderID, purpose: in.Purpose, returnAuthID: in.ReturnAuthorizationID,
+		tier: in.Tier, carrier: carrierFor(in.Purpose, in.Tier),
 		stopKey: in.StopKey, postalPrefix: in.DestinationPostalPrefix, pickupPointID: in.PickupPointID, status: StatusIssued,
 		issuedAt: shared.UTC(now), version: 1,
 	}
 	ev := LabelIssued{
 		Header: shared.Header{Version: l.version, At: l.issuedAt}, LabelRef: l.ref, TrackingNumber: l.tracking,
 		PONumber: l.poNumber, AssignmentID: l.assignmentID, OrderID: l.orderID, PackageNo: l.packageNo,
+		Purpose: l.purpose, ReturnAuthorizationID: l.returnAuthID,
 		Tier: l.tier, Carrier: l.carrier, StopKey: l.stopKey, DestinationPostalPrefix: l.postalPrefix,
 		PickupPointID: l.pickupPointID,
 	}
@@ -232,9 +310,13 @@ func Restore(s Snapshot) (*ShippingLabel, error) {
 	if err := checkSnapshot(s); err != nil {
 		return nil, shared.Corrupt("label %q: %v", s.Ref, err)
 	}
+	if s.Purpose == "" {
+		s.Purpose = PurposeOutbound
+	}
 	return &ShippingLabel{
 		ref: s.Ref, tracking: s.TrackingNumber, poNumber: s.PONumber, packageNo: s.PackageNo,
-		assignmentID: s.AssignmentID, orderID: s.OrderID, tier: s.Tier, carrier: s.Carrier,
+		assignmentID: s.AssignmentID, orderID: s.OrderID, purpose: s.Purpose, returnAuthID: s.ReturnAuthorizationID,
+		tier: s.Tier, carrier: s.Carrier,
 		stopKey: s.StopKey, postalPrefix: s.DestinationPostalPrefix, pickupPointID: s.PickupPointID, status: s.Status,
 		issuedAt: shared.UTC(s.IssuedAt), voidReason: s.VoidReason, voidedAt: shared.UTC(s.VoidedAt), version: s.Version,
 	}, nil
@@ -243,14 +325,18 @@ func Restore(s Snapshot) (*ShippingLabel, error) {
 func checkSnapshot(s Snapshot) error {
 	in := NewLabel{
 		Ref: s.Ref, TrackingNumber: s.TrackingNumber, PONumber: s.PONumber, PackageNo: s.PackageNo,
-		AssignmentID: s.AssignmentID, OrderID: s.OrderID, Tier: s.Tier, StopKey: s.StopKey,
+		AssignmentID: s.AssignmentID, OrderID: s.OrderID, Purpose: s.Purpose,
+		ReturnAuthorizationID: s.ReturnAuthorizationID, Tier: s.Tier, StopKey: s.StopKey,
 		DestinationPostalPrefix: s.DestinationPostalPrefix,
 	}
 	if err := checkNew(in); err != nil {
 		return err
 	}
-	if s.Carrier != CarrierFor(s.Tier) {
-		return fmt.Errorf("carrier %q does not match tier %s", s.Carrier, s.Tier)
+	if s.Purpose == "" {
+		s.Purpose = PurposeOutbound
+	}
+	if s.Carrier != carrierFor(s.Purpose, s.Tier) {
+		return fmt.Errorf("carrier %q does not match purpose %s tier %s", s.Carrier, s.Purpose, s.Tier)
 	}
 	if s.IssuedAt.IsZero() || s.Version < 1 {
 		return errors.New("issuedAt and a version of at least 1 are required")
@@ -288,6 +374,13 @@ func (l *ShippingLabel) AssignmentID() string { return l.assignmentID }
 // OrderID returns the customer order id.
 func (l *ShippingLabel) OrderID() string { return l.orderID }
 
+// Purpose returns OUTBOUND or RETURN (ADR 0017).
+func (l *ShippingLabel) Purpose() Purpose { return l.purpose }
+
+// ReturnAuthorizationID returns the return authorization a RETURN label
+// belongs to (empty on an outbound label).
+func (l *ShippingLabel) ReturnAuthorizationID() string { return l.returnAuthID }
+
 // Tier returns the service tier.
 func (l *ShippingLabel) Tier() shared.Tier { return l.tier }
 
@@ -319,7 +412,8 @@ func (l *ShippingLabel) Version() int64 { return l.version }
 func (l *ShippingLabel) Snapshot() Snapshot {
 	return Snapshot{
 		Ref: l.ref, TrackingNumber: l.tracking, PONumber: l.poNumber, PackageNo: l.packageNo,
-		AssignmentID: l.assignmentID, OrderID: l.orderID, Tier: l.tier, Carrier: l.carrier, StopKey: l.stopKey,
+		AssignmentID: l.assignmentID, OrderID: l.orderID, Purpose: l.purpose, ReturnAuthorizationID: l.returnAuthID,
+		Tier: l.tier, Carrier: l.carrier, StopKey: l.stopKey,
 		DestinationPostalPrefix: l.postalPrefix, Status: l.status, IssuedAt: l.issuedAt, VoidReason: l.voidReason,
 		VoidedAt: l.voidedAt, Version: l.version,
 	}

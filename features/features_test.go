@@ -182,9 +182,16 @@ func (w *world) iIssueALabel(pkg int, po, order, tier string) error {
 	return w.issue(pkg, po, order, tier)
 }
 
+// outboundLabel is the view of a voided outbound label - the only kind these
+// scenarios void; a refused void answers no view at all.
+func outboundLabel(v views.AnyLabel) views.Label {
+	out, _ := v.(views.Label)
+	return out
+}
+
 func (w *world) iVoidTheLabel(reason string) error {
 	v, err := usecases.NewVoidLabel(w.deps).Execute(context.Background(), label.Ref(w.labels[0]), reason)
-	w.lastErr, w.lastLabel = err, v
+	w.lastErr, w.lastLabel = err, outboundLabel(v)
 	return nil
 }
 
