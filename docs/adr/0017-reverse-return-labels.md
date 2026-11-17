@@ -84,3 +84,39 @@ would corrupt the outbound promise judgements.
 - The REST reference docs are regenerated in the same commit as the OpenAPI
   change; the AsyncAPI `LabelIssued` payload schema documents the two optional
   fields.
+
+## Addendum 2026-11-16: one response schema per label kind
+
+The Decision above says what a RETURN label carries; it does not say which
+REST schema answers it. The first cut reused the outbound `Label` schema and
+made `poNumber` and `assignmentId` optional there. That loosened the contract
+of `POST /labels`, which consumers pin with both fields required (the
+`spec-breaking` gate reported four `response-property-became-optional` errors).
+The wire bytes of both kinds are unchanged by this addendum; only the contract
+that describes them is.
+
+- `POST /labels` keeps answering `Label`, byte-identical to the schema before
+  this ADR: `poNumber` and `assignmentId` required, no `purpose`, no
+  `returnAuthorizationId`.
+- `POST /return-labels` answers its own schema, `ReturnLabel`: the fields a
+  reverse label really has, with `purpose` (always `RETURN`) and
+  `returnAuthorizationId` required and neither `poNumber` nor `assignmentId`
+  declared.
+- `POST /labels/{labelRef}/voids` is the one route that serves both kinds
+  (the Decision has `VoidLabel` void a RETURN label, and it is the only route
+  into that use case). Its `200` is `oneOf: [Label, ReturnLabel]`: an outbound
+  label answers `Label` exactly as before, a reverse label answers
+  `ReturnLabel`. The two never overlap, because each requires properties the
+  other never carries. Two alternatives were weighed and rejected: refusing a
+  RETURN label on this route would contradict the Decision, and a second void
+  route for returns would be a new behaviour no caller needs
+  (customer-returns does not void).
+- In code the two kinds are two view types (`views.Label`, `views.ReturnLabel`)
+  and the void use case answers `views.AnyLabel`, the view of the label's
+  purpose. `label_contract_test.go` in the HTTP adapter holds the views, the
+  spec and the real answers of the three routes together.
+
+Known cost: oasdiff reports the void route's `oneOf` as one WARNING
+(`response-body-wrapped-in-one-of-original-preserved`), not an error; a
+consumer generated from the older spec keeps working for outbound labels, the
+only kind it can hold a `labelRef` of.
