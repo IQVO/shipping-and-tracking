@@ -27,5 +27,17 @@ unleash:
     # differs. See HARNESS.md's mutation-testing section for the
     # tagless-switch-under-reports pitfall before assuming a low number
     # means missing tests.
-    efficacy: "90"
-    mutant-coverage: "90"
+    # Measured 2026-11-15, gremlins v0.6.0, per package (`make mutation`, the
+    # CI loop, journey after the ratchet tests):
+    #   journey          88 killed, 2 lived, 0 not covered -> efficacy 97.78%, mutator coverage 100%
+    #   label            39 killed, 0 lived,  0 not covered -> 100% / 100%
+    #   shared           31 killed, 0 lived,  0 not covered -> 100% / 100%
+    #   analytics/report 44 killed, 0 lived,  0 not covered -> 100% / 100%
+    # The 2 journey survivors are equivalent mutants (ChooseCarrier's `<` and
+    # `>` sit inside a `!=` guard, so `<=` / `>=` cannot change the order);
+    # see MUTATION.md. journey's 97.78% is the weakest package, so efficacy
+    # sits at 97 (strictly below it); mutant-coverage is 99.
+    # Plain numbers on purpose: a quoted value is read by gremlins v0.6.0 as 0
+    # and the gate would never fail.
+    efficacy: 97
+    mutant-coverage: 99
