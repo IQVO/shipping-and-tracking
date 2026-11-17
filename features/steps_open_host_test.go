@@ -150,7 +150,7 @@ func (w *world) lastRecordedScanNodeIs(node string) error {
 
 func (w *world) iVoidTheNamedLabel(ref, reason string) error {
 	v, err := usecases.NewVoidLabel(w.deps).Execute(context.Background(), label.Ref(ref), reason)
-	w.lastLabel, w.lastErr = v, err
+	w.lastLabel, w.lastErr = outboundLabel(v), err
 	return nil
 }
 

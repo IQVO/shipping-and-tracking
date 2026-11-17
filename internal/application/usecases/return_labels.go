@@ -52,29 +52,29 @@ func NewIssueReturnLabel(d Deps) *IssueReturnLabel { return &IssueReturnLabel{wr
 // label per (returnAuthorizationId, packageNo)), label.ErrTrackingNumberTaken
 // (after one retry with a new number), ports.ErrShipToUnavailable. Every call
 // is counted once, as issued or as rejected with the reason (Deps.Metrics).
-func (u *IssueReturnLabel) Execute(ctx context.Context, cmd IssueReturnLabelCmd) (views.Label, error) {
+func (u *IssueReturnLabel) Execute(ctx context.Context, cmd IssueReturnLabelCmd) (views.ReturnLabel, error) {
 	v, err := u.execute(ctx, cmd)
 	u.recordOutcome(ctx, err)
 	return v, err
 }
 
-func (u *IssueReturnLabel) execute(ctx context.Context, cmd IssueReturnLabelCmd) (views.Label, error) {
+func (u *IssueReturnLabel) execute(ctx context.Context, cmd IssueReturnLabelCmd) (views.ReturnLabel, error) {
 	if err := cmd.validate(); err != nil {
-		return views.Label{}, err
+		return views.ReturnLabel{}, err
 	}
 	existing, err := u.Labels.FindByReturnPackage(ctx, cmd.ReturnAuthorizationID, cmd.PackageNo)
 	if hit, err := found(err); err != nil {
-		return views.Label{}, err
+		return views.ReturnLabel{}, err
 	} else if hit {
-		return views.Label{}, fmt.Errorf("%w: label %s covers package %d of return %s", label.ErrLabelAlreadyIssued,
+		return views.ReturnLabel{}, fmt.Errorf("%w: label %s covers package %d of return %s", label.ErrLabelAlreadyIssued,
 			existing.Ref(), cmd.PackageNo, cmd.ReturnAuthorizationID)
 	}
 	addr, err := u.ShipTo.GetShipTo(ctx, cmd.OrderID)
 	if errors.Is(err, ports.ErrNotFound) {
-		return views.Label{}, shared.Invalid("orderId %q is unknown to customer-ordering", cmd.OrderID)
+		return views.ReturnLabel{}, shared.Invalid("orderId %q is unknown to customer-ordering", cmd.OrderID)
 	}
 	if err != nil {
-		return views.Label{}, err
+		return views.ReturnLabel{}, err
 	}
 	// The same derivation the outbound label ran: the pickup-point form for a
 	// pickup destination, the normalized address otherwise (ADR 0002 A10,
@@ -92,7 +92,7 @@ func (u *IssueReturnLabel) execute(ctx context.Context, cmd IssueReturnLabelCmd)
 	// One retry with a fresh tracking number answers a generator collision
 	// (ADR 0002 A2).
 	for attempt := 0; ; attempt++ {
-		v, err := transact(ctx, u.UoW, func(ctx context.Context) (views.Label, error) {
+		v, err := transact(ctx, u.UoW, func(ctx context.Context) (views.ReturnLabel, error) {
 			in.Ref, in.TrackingNumber = u.IDs.NewLabelRef(), u.IDs.NewTrackingNumber()
 			return u.create(ctx, in)
 		})
@@ -105,16 +105,16 @@ func (u *IssueReturnLabel) execute(ctx context.Context, cmd IssueReturnLabelCmd)
 
 // create issues the reverse label and publishes LabelIssued; no journey, no
 // ship-to snapshot (ADR 0017).
-func (u *IssueReturnLabel) create(ctx context.Context, in label.NewLabel) (views.Label, error) {
+func (u *IssueReturnLabel) create(ctx context.Context, in label.NewLabel) (views.ReturnLabel, error) {
 	l, labelEvents, err := label.Issue(in, u.now())
 	if err != nil {
-		return views.Label{}, err
+		return views.ReturnLabel{}, err
 	}
 	if err := u.Labels.Save(ctx, l); err != nil {
-		return views.Label{}, err
+		return views.ReturnLabel{}, err
 	}
 	if err := u.publish(ctx, labelEvents); err != nil {
-		return views.Label{}, err
+		return views.ReturnLabel{}, err
 	}
-	return views.LabelFrom(l), nil
+	return views.ReturnLabelFrom(l), nil
 }

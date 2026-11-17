@@ -36,6 +36,17 @@ func TestIssueLabelStoresLabelSnapshotJourneyAndEvent(t *testing.T) {
 	}
 }
 
+// outboundView is the view of a voided OUTBOUND label: the void answers
+// views.Label for it, never the reverse label's view.
+func outboundView(t *testing.T, v views.AnyLabel) views.Label {
+	t.Helper()
+	out, ok := v.(views.Label)
+	if !ok {
+		t.Fatalf("the void of an outbound label answers views.Label, got %T", v)
+	}
+	return out
+}
+
 func assertIssuedView(t *testing.T, v views.Label) {
 	t.Helper()
 	if v.LabelRef != "lbl-1" || v.TrackingNumber != "RN000000000000001" || v.Carrier != label.CarrierExpress ||
@@ -211,8 +222,12 @@ func TestVoidLabelClosesLabelAndJourneyAndPublishes(t *testing.T) {
 	r := newRig(t)
 	tn := r.issued(t)
 	r.clock.Advance(2 * time.Hour)
-	v, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), "lbl-1", "order cancelled")
+	voided, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), "lbl-1", "order cancelled")
 	noErr(t, err)
+	v := outboundView(t, voided)
+	if v.PONumber != "PO-1" || v.AssignmentID == "" {
+		t.Fatalf("the void of an outbound label answers the outbound view, got %+v", v)
+	}
 	if v.Status != "VOIDED" || v.VoidReason != "order cancelled" || v.VoidedAt == nil || !v.VoidedAt.Equal(hour(2)) {
 		t.Fatalf("view = %+v", v)
 	}
@@ -232,8 +247,9 @@ func TestVoidLabelTwiceReturnsTheLabelUnchangedWithoutAnEvent(t *testing.T) {
 	_, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), "lbl-1", "first")
 	noErr(t, err)
 	before := r.store.Counts()
-	v, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), "lbl-1", "second")
+	voided, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), "lbl-1", "second")
 	noErr(t, err)
+	v := outboundView(t, voided)
 	if v.Status != "VOIDED" || v.VoidReason != "first" || r.store.Counts() != before {
 		t.Fatalf("view=%+v counts=%+v", v, r.store.Counts())
 	}

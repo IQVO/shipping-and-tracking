@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/usecases"
+	"github.com/claudioed/shipping-and-tracking/internal/application/views"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
@@ -22,7 +23,7 @@ func TestIssueReturnLabelIssuesWithoutJourneyOrSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Carrier != label.CarrierGround || v.Purpose != "RETURN" || v.ReturnAuthorizationID != "ret-1" || v.PONumber != "" {
+	if v.Carrier != label.CarrierGround || v.Purpose != "RETURN" || v.ReturnAuthorizationID != "ret-1" {
 		t.Fatalf("view = %+v", v)
 	}
 	// No journey: the (poNumber, packageNo) identity does not fit (ADR 0017).
@@ -100,12 +101,25 @@ func TestVoidReturnLabelNeedsNoJourney(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), label.Ref(v.LabelRef), "return expired")
+	voided, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), label.Ref(v.LabelRef), "return expired")
 	if err != nil {
 		t.Fatalf("void a reverse label: %v", err)
 	}
-	if got.Status != "VOIDED" || got.Purpose != "RETURN" {
+	got, ok := voided.(views.ReturnLabel)
+	if !ok {
+		t.Fatalf("the void of a reverse label answers views.ReturnLabel, got %T", voided)
+	}
+	if got.Status != "VOIDED" || got.Purpose != "RETURN" || got.ReturnAuthorizationID != "ret-1" || got.VoidReason != "return expired" {
 		t.Fatalf("voided view = %+v", got)
+	}
+	// Voiding it again answers the same kind, unchanged.
+	again, err := usecases.NewVoidLabel(r.deps).Execute(context.Background(), label.Ref(v.LabelRef), "second")
+	if err != nil {
+		t.Fatalf("second void: %v", err)
+	}
+	second, ok := again.(views.ReturnLabel)
+	if !ok || second.VoidReason != "return expired" || second.Status != "VOIDED" || second.ReturnAuthorizationID != "ret-1" {
+		t.Fatalf("second void = %#v, want the reverse view unchanged", again)
 	}
 }
 
