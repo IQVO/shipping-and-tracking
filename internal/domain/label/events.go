@@ -5,8 +5,8 @@ import "github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 const entity = "label"
 
 // LabelIssued is raised by Issue. Its fields are the model's data list plus
-// orderId (ADR 0002 A12), stopKey and destinationPostalPrefix (E10). It never
-// carries an address. purpose and returnAuthorizationId appear only on a
+// orderId (ADR 0002 A12), stopKey and destinationPostalPrefix (E10), and the
+// optional destinationStationNodeId (ADR 0019). It never carries an address. purpose and returnAuthorizationId appear only on a
 // reverse label and are omitted on an outbound one (ADR 0017).
 type LabelIssued struct {
 	shared.Header
@@ -24,6 +24,11 @@ type LabelIssued struct {
 	DestinationPostalPrefix string
 	// PickupPointID is empty on a ship-to label (ADR 0016).
 	PickupPointID string
+	// DestinationStationNodeID is the delivery station of the area covering
+	// DestinationPostalPrefix, read from this context's area view when the
+	// label was issued; empty when no station is known (ADR 0019). A node id,
+	// never an address. The label does not keep it: it lives on the event.
+	DestinationStationNodeID string
 }
 
 // EventName returns "LabelIssued".
