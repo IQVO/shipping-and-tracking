@@ -97,11 +97,17 @@ func (u *IssueLabel) issuePickup(ctx context.Context, cmd IssueLabelCmd, addr sh
 	if point.State != "ACTIVE" {
 		return views.Label{}, fmt.Errorf("%w: %s is %s", shipto.ErrPickupPointUnavailable, point.ID, point.State)
 	}
+	// The station is the area's station of the point's prefix, not the
+	// point's own serving station (ADR 0019, open question).
+	station, err := u.destinationStation(ctx, point.PostalPrefix)
+	if err != nil {
+		return views.Label{}, err
+	}
 	now := u.now()
 	in := label.NewLabel{
 		PONumber: cmd.PONumber, PackageNo: cmd.PackageNo, AssignmentID: cmd.AssignmentID, OrderID: cmd.OrderID,
 		Tier: cmd.Tier, StopKey: u.StopKeys.StopKey("pickup-point|" + point.ID), DestinationPostalPrefix: point.PostalPrefix,
-		PickupPointID: point.ID,
+		PickupPointID: point.ID, DestinationStationNodeID: station,
 	}
 	for attempt := 0; ; attempt++ {
 		v, err := transact(ctx, u.UoW, func(ctx context.Context) (views.Label, error) {
@@ -159,9 +165,15 @@ func (u *IssueLabel) issue(ctx context.Context, cmd IssueLabelCmd, addr shipto.A
 	if err != nil {
 		return views.Label{}, fmt.Errorf("seal ship-to: %w", err)
 	}
+	prefix := addr.PostalPrefix()
+	station, err := u.destinationStation(ctx, prefix)
+	if err != nil {
+		return views.Label{}, err
+	}
 	in := label.NewLabel{
 		PONumber: cmd.PONumber, PackageNo: cmd.PackageNo, AssignmentID: cmd.AssignmentID, OrderID: cmd.OrderID,
-		Tier: cmd.Tier, StopKey: u.StopKeys.StopKey(addr.Normalized()), DestinationPostalPrefix: addr.PostalPrefix(),
+		Tier: cmd.Tier, StopKey: u.StopKeys.StopKey(addr.Normalized()), DestinationPostalPrefix: prefix,
+		DestinationStationNodeID: station,
 	}
 	// One retry with a fresh tracking number answers a generator collision (ADR 0002 A2).
 	for attempt := 0; ; attempt++ {

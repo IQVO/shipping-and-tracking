@@ -66,6 +66,7 @@ type world struct {
 	labels      []string                // label refs issued, in order
 	sweep       usecases.SweepResult
 	loadEvent   usecases.ApplyScansCmd
+	areaEvents  int // ServiceAreaAssigned folds so far: each gets a fresh event id
 }
 
 func newWorld() *world {
@@ -74,7 +75,7 @@ func newWorld() *world {
 	w.deps = usecases.Deps{
 		Labels: s.Labels(), Snapshots: s.Snapshots(), Journeys: s.Journeys(), Catalog: s.Catalog(), Inbox: s.Inbox(),
 		Outbox: s.Outbox(), UoW: s.UnitOfWork(), Clock: w.clock, IDs: w.ids, ShipTo: w.gateway,
-		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{},
+		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{}, AreaModes: s.Areas(),
 	}
 	return w
 }
@@ -494,4 +495,5 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	registerOpenHostSteps(sc, w)
 	registerEtaSteps(sc, w)
 	registerRuleSteps(sc, w)
+	registerStationSteps(sc, w)
 }

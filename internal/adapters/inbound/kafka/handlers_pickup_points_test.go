@@ -123,8 +123,8 @@ func TestNodeRegisteredAppliedAgainDoesNotDemoteAPickupPoint(t *testing.T) {
 }
 
 // The repair of a row the defect blanked (runbook, "Repairing the pickup
-// point view"). The pickup-point fold claims a NodeRegistered under the shared
-// inbox identity "node-topology". While that claim stands a replayed
+// point view"). The pickup-point fold claims a NodeRegistered under the inbox
+// identity "node-topology". While that claim stands a replayed
 // registration is SKIPPED and the row stays blank - a new consumer group
 // alone repairs nothing. Once the claims of that identity are cleared the
 // replay restores station and prefix and keeps the state.

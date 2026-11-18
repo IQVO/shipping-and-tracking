@@ -15,7 +15,7 @@ import (
 // postalCode verbatim) as the consumer registers a PICKUP_POINT: PROPOSED,
 // with its serving station.
 var registeredPoint = repository.PickupPoint{
-	ID: "node-0f3a91", StationNodeID: "node-ds-07", PostalPrefix: "07750-000", State: repository.PickupPointProposed,
+	ID: "node-0f3a91", StationNodeID: "node-ds-21", PostalPrefix: "07750-000", State: repository.PickupPointProposed,
 }
 
 func pointIs(t *testing.T, f Fixture, want repository.PickupPoint) {
@@ -108,7 +108,7 @@ var pickupPointCases = []named{
 	}},
 	{"a blank id is refused and stores nothing", func(t *testing.T, f Fixture) {
 		ctx := context.Background()
-		if err := f.PickupPoints.Register(ctx, repository.PickupPoint{StationNodeID: "node-ds-07", State: repository.PickupPointProposed}); err == nil {
+		if err := f.PickupPoints.Register(ctx, repository.PickupPoint{StationNodeID: "node-ds-21", State: repository.PickupPointProposed}); err == nil {
 			t.Fatal("a registration without an id must fail")
 		}
 		setState(t, f, "", repository.PickupPointActive, false)

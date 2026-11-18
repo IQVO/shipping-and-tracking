@@ -109,4 +109,8 @@ type AreaMode struct {
 	DeliveryMode DeliveryMode
 	Carriers     []journey.CarrierOption
 	Version      int64
+	// DeliveryStationNodeID is the delivery station serving the prefix, as
+	// ServiceAreaAssigned carried it (ADR 0019). Empty when the event named
+	// none or the row predates ADR 0019 (stored as NULL).
+	DeliveryStationNodeID string
 }

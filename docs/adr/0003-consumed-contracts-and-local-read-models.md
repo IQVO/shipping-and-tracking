@@ -32,7 +32,7 @@ CloudEvents `type`, deduplicated on the CloudEvents `id` in `processed_events` (
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned` (ADR 0013) | `trackingNumbers[]`, `etaStart`, `etaEnd`; the CloudEvents `time` is the `assignedAt` | `AssignEta` per tracking number (the day-of ETA window; not a scan) |
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged` (ADR 0014) | `trackingNumbers[]`, `reason`, `flaggedAt`; `stopKey` and `failures` dropped | `RelayDeliveryPointFlag` per tracking number (the delivery-point flag; not a scan) |
 | offer-availability (Conformist) | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | upsert `catalog_dimensions` |
-| node-topology (Conformist) | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | `postalPrefix`, `assignmentVersion`, `deliveryMode`, `carriers[]` (`carrierId`, `handoffNodeId`, `costPerPackageCents`, `transitMinutes`); `deliveryStationNodeId` and `regionId` read and dropped; absent `deliveryMode`/`carriers` = `NETWORK_ROUTE`, no options | upsert `area_modes` under the assignment-version guard |
+| node-topology (Conformist) | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | `postalPrefix`, `assignmentVersion`, `deliveryMode`, `carriers[]` (`carrierId`, `handoffNodeId`, `costPerPackageCents`, `transitMinutes`), `deliveryStationNodeId` (kept, ADR 0019); `regionId` read and dropped; absent `deliveryMode`/`carriers` = `NETWORK_ROUTE`, no options | upsert `area_modes` under the assignment-version guard (an equal version also fills a missing station, ADR 0019) |
 
 The entity segment of `PackageReturnInitiated` is `packageattempthistory` in last-mile-delivery's pushed
 AsyncAPI; the `route` spelling is kept as a tolerated alias. Types not in the table are
@@ -54,7 +54,9 @@ acknowledged and ignored.
 `CatalogDimensionsView` (`catalog_dimensions`) accepts no command and enforces no invariant (ADR 0002 A18).
 `AreaModeView` (`area_modes`, ADR 0015) is the second read model: one row per postal prefix with the area's
 delivery mode and declared carrier options, upserted only when the event's `assignmentVersion` is strictly newer
-than the stored one (the same guard delivery-promise uses).
+than the stored one (the same guard delivery-promise uses). Since ADR 0019 the row also holds the area's delivery
+station (`delivery_station_node_id`, published as `destinationStationNodeId` on `LabelIssued`), and an event of the
+SAME version still writes when it brings a station the stored row lacks.
 
 ### Synchronous call
 
