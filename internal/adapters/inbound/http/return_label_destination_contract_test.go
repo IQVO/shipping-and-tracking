@@ -163,8 +163,9 @@ func TestReturnLabelPrefixComesFromTheNodeOrFromTheCaller(t *testing.T) {
 
 // The refusal is a complete RFC 9457 problem and is state-dependent: the same
 // body is served once the node fact has arrived. (This fixture has no
-// Idempotency-Key store; what a stored refusal does to a retry under the same
-// key is the integration test of idempotency_return_node_integration_test.go.)
+// Idempotency-Key store; that the refusal is not stored under its key, so the
+// same key retries the work, is not_stored_handler_test.go for the handler and
+// idempotency_return_node_integration_test.go for the middleware.)
 func TestReturnLabelDestinationRefusalIsAProblemAndLiftsWithTheNodeFact(t *testing.T) {
 	f := newFixture(t)
 	body := returnBody("ret-1", `,"destinationNodeId":"`+returnsNode+`"`)

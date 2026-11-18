@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/ports"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 )
 
 // maxBodyBytes bounds a request body; every body here is a few hundred bytes.
@@ -50,11 +51,39 @@ func decodeJSON(r *http.Request, dest any) error {
 	return nil
 }
 
+// notStoredUnderKey lists the refusals the Idempotency-Key middleware must NOT
+// store: the same request, under the same key, can pass later, so a stored
+// answer would pin a refusal that is no longer true for 24 hours. A success
+// and a refusal that is final for the request are not here and stay stored.
+// For a listed refusal the handler marks its writer (capture.DoNotCache) and
+// the middleware rolls its whole transaction back, the key row included: the
+// key is free again, for the same request or for another one.
+//
+//   - ports.ErrConcurrentUpdate: another writer won the optimistic lock; the
+//     retry reloads and may win.
+//   - shipto.ErrDestinationPrefixUnavailable: the destination node's
+//     registration has not been consumed yet; it commits nothing and the
+//     retry is served once the node fact has arrived (ADR 0018).
+var notStoredUnderKey = []error{
+	ports.ErrConcurrentUpdate,
+	shipto.ErrDestinationPrefixUnavailable,
+}
+
+// passesLater reports whether err is one of the notStoredUnderKey refusals.
+func passesLater(err error) bool {
+	for _, target := range notStoredUnderKey {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
 // writeError writes err as its RFC 7807 problem. An unmapped error is a 500
 // whose detail never leaks the internal message (it is logged instead).
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	p := problemFor(err)
-	if nc, ok := w.(interface{ DoNotCache() }); ok && errors.Is(err, ports.ErrConcurrentUpdate) {
+	if nc, ok := w.(interface{ DoNotCache() }); ok && passesLater(err) {
 		nc.DoNotCache()
 	}
 	detail := err.Error()
