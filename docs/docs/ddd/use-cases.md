@@ -65,7 +65,7 @@ Source: `internal/application/usecases/labels.go`, `internal/domain/label/label.
   4. Validate the address, then run the deterministic deliverability check on it (`Address.Quality`, ADR 0011). A `SUSPECT` verdict refuses the issuance with `ErrAddressSuspect`, answered 422 `address-suspect`; the detail carries reason tokens only (`RECIPIENT_PLACEHOLDER`, `STREET_PLACEHOLDER`, `STREET_MISSING_NUMBER`, `CITY_PLACEHOLDER`, `POSTAL_CODE_TOO_SHORT`), and no label, journey, snapshot or event is written. Otherwise seal the address (AES-256-GCM, fresh nonce), derive `stopKey` (HMAC-SHA-256 of the normalised address) and the five-character postal prefix.
   5. In one transaction: mint `labelRef` (`lbl-<uuid>`) and a tracking number (`RN` plus 16 base-32 characters), save the label, save the sealed snapshot, **start the journey** (`StartJourney`, state `LABELLED`, version 1, no event of its own) and enqueue `LabelIssued`.
 - **Result:** `201` with the label metadata, never the address. The attempt is counted once in `shipping.labels.issued` as `issued` or `rejected` with the reason.
-- **Idempotency:** the `Idempotency-Key` replays the first response; a new key for the same package hits `label-already-issued`.
+- **Idempotency:** the `Idempotency-Key` replays the first stored response; a new key for the same package hits `label-already-issued`. `pickup-point-unavailable` is not stored (`notStoredUnderKey` in `internal/adapters/inbound/http/response.go`): the same request under the same key is executed again and is served once the point is `ACTIVE`, and that `201` is then what the key replays (ADR 0016, addendum 2026-11-18).
 
 ## IssueReturnLabel
 

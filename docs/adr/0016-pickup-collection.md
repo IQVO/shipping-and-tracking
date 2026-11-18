@@ -118,16 +118,39 @@ again: the procedure, the inbox identity it has to clear and its dependency on
 the topic's retention are in the runbook, "Repairing the pickup point view".
 No migration is needed: the table and its columns are unchanged.
 
-### Not decided here
+### The refusal is not stored under the Idempotency-Key
 
-- Whether `pickup-point-unavailable` is stored under the caller's
-  `Idempotency-Key`. It follows the point's state, which changes, so under the
-  rule of ADR 0018 it is a candidate for the refusals that are not stored;
-  today it is stored, as every 4xx is that is not on that list, and replayed
-  for the 24 hours the key lives. While it answered 500 it was not stored. That
-  belongs to the fleet-wide change of that rule.
-- The prefix of a pickup point is its registered `postalCode` as published. A
-  code with a character outside A-Z 0-9 (node-topology's own example is
-  `07750-000`) fails the label's prefix rule and the label is refused 422
-  `validation-failed`. ADR 0018 normalises a node's postal code for a return
-  label; this ADR does not for a pickup label.
+`pickup-point-unavailable` follows the point's state, which node facts change:
+a point this context does not hold yet, a `PROPOSED` one and a `SUSPENDED` one
+can all be `ACTIVE` later, and the refusal commits nothing. It is a refusal the
+same request can pass later, so, by the rule of ADR 0018, it is **not stored
+under the caller's `Idempotency-Key`**: it is the third entry of the one list
+`notStoredUnderKey` (`internal/adapters/inbound/http/response.go`), beside
+`concurrent-update` and `destination-prefix-unavailable`. The key row rolls
+back with the refusal; the same request under the same key is executed again
+and is served once the point is `ACTIVE`, and that `201` is what the key
+replays from then on. Callers use keys that are deterministic per package
+(vendor-connectivity sends `vc-label-<po>-<pkg>`): a stored refusal would have
+kept every label asked before the point's activation refused for the 24 hours
+the key lives. While the refusal still answered 500 it was not stored either;
+mapping it to 422 without this entry would have introduced exactly that.
+
+The fourth cause, a `RETIRED` point, never passes later. It is covered by the
+same entry because the refusal is one error: a retry is executed, refuses again
+and commits nothing.
+
+`TestPickupRefusalIsNotStoredSoItsKeyRetriesTheWork` holds the middleware to
+it over a real Postgres;
+`TestWriteErrorMarksOnlyTheRetryableRefusalsAsNotStored` and
+`TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored` hold the
+handler to marking these refusals and nothing else.
+
+### The prefix of a pickup point
+
+The prefix of a pickup point is its registered `postalCode` as published, and
+the label's prefix rule admits only A-Z 0-9. That is not a gap for a pickup
+point: node-topology refuses to register a `PICKUP_POINT` whose postal code is
+not wholly A-Z 0-9 (`ErrPointPrefixNotLabellable`, `labellable` in its
+`internal/domain/node/node.go`), so a code with a separator such as
+`07750-000` can only belong to a node of another type, which this view does not
+keep.

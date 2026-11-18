@@ -189,3 +189,9 @@ the same date to [ADR 0016](./0016-pickup-collection.md): a status fact now
 changes only the state of an existing point, and a retired point keeps its row.
 Nothing decided in this ADR changes: `NodeDestinationView` stays its own view
 with its own inbox identity.
+
+The same addendum adds a third refusal to the list `notStoredUnderKey` that
+"The refusal" above introduces with two entries: `pickup-point-unavailable`.
+The handler test this ADR names
+`TestOnlyTheDestinationRefusalIsMarkedNotToBeStored` is now
+`TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored`.
