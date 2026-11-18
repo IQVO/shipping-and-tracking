@@ -49,6 +49,7 @@ var problemCatalogue = []struct {
 	{shared.ErrValidation, validationFailed},
 	{ports.ErrShipToUnavailable, problem{http.StatusServiceUnavailable, "ship-to-unavailable", "The ship-to address is unavailable"}},
 	{shipto.ErrAddressSuspect, problem{http.StatusUnprocessableEntity, "address-suspect", "The ship-to address failed the deliverability check; no label is stored"}},
+	{shipto.ErrPickupPointUnavailable, problem{http.StatusUnprocessableEntity, "pickup-point-unavailable", "The order's pickup point is unknown to this context or not ACTIVE; no label is stored"}},
 	{label.ErrLabelAlreadyIssued, problem{http.StatusConflict, "label-already-issued", "A label was already issued for this package"}},
 	{shipto.ErrDestinationPrefixUnavailable, problem{http.StatusConflict, "destination-prefix-unavailable", "This context holds no usable destination prefix for the destination node; no label is stored"}},
 	{label.ErrTrackingNumberTaken, problem{http.StatusConflict, "tracking-number-taken", "The tracking number is already taken"}},
