@@ -36,7 +36,7 @@ func newRig(t *testing.T) *rig {
 	r.deps = usecases.Deps{
 		Labels: s.Labels(), Snapshots: s.Snapshots(), Journeys: s.Journeys(), Catalog: s.Catalog(), Inbox: s.Inbox(),
 		Outbox: s.Outbox(), UoW: s.UnitOfWork(), Clock: r.clock, IDs: r.ids, ShipTo: r.gateway,
-		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{},
+		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{}, NodeDestinations: s.NodeDestinations(),
 	}
 	return r
 }
