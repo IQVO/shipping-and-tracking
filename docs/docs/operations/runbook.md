@@ -18,6 +18,7 @@ One `api` Deployment, one process (`cmd/api/main.go`, the composition root — t
   | Route | Use case |
   | --- | --- |
   | `POST /labels` | issue a label (calls customer-ordering, seals the snapshot, starts the journey) |
+  | `POST /return-labels` | issue the reverse label of a customer return (calls customer-ordering; the destination prefix comes from the local `node_destinations` view when the body names `destinationNodeId`, ADR 0018) |
   | `POST /labels/{labelRef}/voids` | void before handover |
   | `GET /journeys/{trackingNumber}` | the timeline |
   | `POST /journeys/{trackingNumber}/scans` | record a scan |
@@ -40,7 +41,7 @@ Any consumer, job loop or the relay returning on its own makes the process exit 
 - **Probes** (api): `startupProbe` and `livenessProbe` on `/healthz`, `readinessProbe` on `/readyz`. `cmd/mcp` and `cmd/a2a` probe `/healthz` for all three (they have no readiness dependency check).
 - **Scaling**: `replicaCount: 1` by default; `autoscaling.api.enabled` adds an HPA (1 to 4 replicas at 70% CPU). More than one api replica is safe by design (the relay claims rows with `SKIP LOCKED`, consumer groups are stable, the inbox dedupes inside the handler transaction) but has not been load-tested.
 - **Migrations**: embedded in the binary and applied with golang-migrate at every boot; its advisory lock makes concurrent starts safe. There is no separate migration job. Two databases, two lists:
-  - OLTP database (`internal/adapters/outbound/postgres/migrations/`, applied by `cmd/api`, `cmd/mcp` and `cmd/a2a`): `0001_schema` (eight tables: `shipping_labels`, `ship_to_snapshots`, `package_journeys`, `journey_scans`, `catalog_dimensions`, `outbox_events`, `processed_events`, `idempotency_keys`) and `0002_idempotency_key_global` (the `idempotency_keys` primary key becomes `key` alone, ADR 0010; it first deletes rows that reuse a key on two routes, keeping the oldest) and `0003_journey_eta` (three nullable ETA columns on `package_journeys`, ADR 0013). Use `MIGRATIONS_DATABASE_URL` (direct DSN) when `DATABASE_URL` goes through PgBouncer.
+  - OLTP database (`internal/adapters/outbound/postgres/migrations/`, applied by `cmd/api`, `cmd/mcp` and `cmd/a2a`): `0001_schema` (eight tables: `shipping_labels`, `ship_to_snapshots`, `package_journeys`, `journey_scans`, `catalog_dimensions`, `outbox_events`, `processed_events`, `idempotency_keys`) and `0002_idempotency_key_global` (the `idempotency_keys` primary key becomes `key` alone, ADR 0010; it first deletes rows that reuse a key on two routes, keeping the oldest) and `0003_journey_eta` (three nullable ETA columns on `package_journeys`, ADR 0013). The later ones follow the same rule, one per ADR; the newest is `0008_node_destinations` (the `node_destinations` read model, ADR 0018), whose table starts EMPTY and needs the rebuild described under [Rebuilding the node destination view](#rebuilding-the-node-destination-view). Use `MIGRATIONS_DATABASE_URL` (direct DSN) when `DATABASE_URL` goes through PgBouncer.
   - Analytical database (`analytics/migrations/`, applied by `cmd/st-projector` through `ANALYTICS_DATABASE_URL`, a direct DSN; `cmd/st-reports` runs no migration): `0001_delivery_facts` (four tables: `analytics_processed_events`, `package_labels`, `journey_scans`, `package_outcomes`). It is a projection of the service's own topic, so it can be dropped and rebuilt by replaying the topic (ADR 0012).
 
 ### What readiness waits for
@@ -56,6 +57,7 @@ Any consumer, job loop or the relay returning on its own makes the process exit 
 | consume | `retailnetwork.linehaul-transportation.events` | `LINEHAUL_CONSUMER_GROUP` | `retailnetwork.linehaul-transportation.events.dlq` |
 | consume | `retailnetwork.last-mile-delivery.events` | `LASTMILE_CONSUMER_GROUP` | `retailnetwork.last-mile-delivery.events.dlq` |
 | consume | `retailnetwork.offer-availability.events` | `CATALOG_CONSUMER_GROUP` | `retailnetwork.offer-availability.events.dlq` |
+| consume | `retailnetwork.node-topology.events` | `ST_AREAS_CONSUMER_GROUP` (`config.areasConsumerGroup`; feeds `area_modes`, `pickup_points` and `node_destinations`) | `retailnetwork.node-topology.events.dlq` |
 | consume (`cmd/st-projector`, ADR 0012) | `retailnetwork.shipping-and-tracking.events` (its own topic) | `ANALYTICS_CONSUMER_GROUP` (`shipping-and-tracking-analytics`) | `retailnetwork.shipping-and-tracking.analytics.dlq` (poison only; transient failures retry forever) |
 
 Source: `internal/adapters/inbound/kafka/handlers.go` (topics), `deadletter.go` (`DLQSuffix = ".dlq"`), `internal/adapters/outbound/kafka/encoder.go` (produced topic). Group ids are chart values and must stay stable across restarts so a rescheduled pod resumes from its committed offsets.
@@ -148,3 +150,27 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 - Restart: `kubectl -n warehouse-systems rollout restart deploy/shipping-and-tracking`; history/image: `kubectl -n warehouse-systems rollout history deploy/shipping-and-tracking`.
 - Logs (Grafana Loki, label `app=shipping-and-tracking`): JSON slog on stdout. Boot errors name the missing variable; job ticks log `scheduled job finished` with `job`/`result`; worker deaths log `consumer stopped` / `outbox relay stopped` immediately before the non-zero exit.
 - Crypto key rotation: every snapshot stores its sealing key's id in `ship_to_snapshots.key_id` (first 8 hex chars of the key's SHA-256, `internal/adapters/outbound/crypto/crypto.go`) precisely so a rotation can tell which key sealed which row; opening with a different key fails (`ErrBadKey`). No production path reads a snapshot back (write-only; purged 30d after the journey closes — the migration comment says "never read back by a response"), so rotating `SHIP_TO_ENCRYPTION_KEY` breaks no live read path — but pre-rotation snapshots become unopenable by the new key. Rotating `STOP_KEY_SECRET` changes the `stop_key`/postal prefix derived for NEW labels; existing `shipping_labels` rows keep theirs.
+
+### Rebuilding the node destination view
+
+`node_destinations` (ADR 0018) holds, per node of node-topology, the destination prefix of a return label that names its destination by `destinationNodeId`. It is fed by `NodeRegistered`, which node-topology emits ONCE per node. Migration `0008` creates the table empty, and every `NodeRegistered` consumed before it fed only `pickup_points`, so every node registered before the deploy is unknown to the view until it is rebuilt. This repository has no replay tooling: the rebuild is a change of consumer group.
+
+**What the inbox does to a redelivered id.** A claim is the pair `(consumer, CloudEvents id)` in `processed_events`, written in the transaction of the effect and kept 30 days. The older folds of the node-topology topic (`area_modes`, `pickup_points`) claim as `node-topology`; the `node_destinations` fold claims as `node-topology.node-destinations`. On a replay of the topic:
+
+- The `node_destinations` fold has never claimed those ids, so each `NodeRegistered` is applied once; a second delivery of the same id is skipped (`TestNoteNodeDestinationSkipsARedeliveredEventID`).
+- The older folds skip every id they claimed within the last 30 days: `area_modes` and `pickup_points` do not change, and a pickup point is not demoted to `PROPOSED` (`TestAReplayedNodeRegisteredFillsTheNodeViewAndLeavesThePickupPointAlone`, both in `internal/application/usecases/node_destinations_test.go`).
+- An id older than 30 days is no longer claimed and IS applied again by the older folds. `area_modes` drops it (the assignment-version guard). `pickup_points` re-folds the point's history in its original order, so a point is `PROPOSED` between its replayed `NodeRegistered` and its replayed `NodeActivated`, and a pickup label of that point is refused for that moment. This arises only if the topic retains more than 30 days.
+- A message that was dead-lettered the first time is dead-lettered again: expect duplicates on `retailnetwork.node-topology.events.dlq`.
+
+**The dependency.** The replay only finds what the topic still retains. A node whose `NodeRegistered` is past the topic's retention cannot be restored this way and stays `409 destination-prefix-unavailable`. This service has no other source: it never calls node-topology, and node-topology does not publish a node's registration a second time.
+
+**Procedure**, to be finished before any caller sends `destinationNodeId`:
+
+1. Deploy the version that carries migration `0008`.
+2. For every node id a caller will send, confirm that the topic still holds its registration: `kafka-console-consumer.sh --bootstrap-server "$KAFKA_BROKERS" --topic retailnetwork.node-topology.events --from-beginning --timeout-ms 30000 | grep NodeRegistered | grep '"nodeId":"<node id>"'`. No line for a node means step 5 will not find it either: stop and escalate, do not enable the caller for that node.
+3. Set `config.areasConsumerGroup` (`ST_AREAS_CONSUMER_GROUP`) to a group id that has never existed, for example `shipping-and-tracking-areas-r2`, wherever the deployment sets it, and roll out. A group with no committed offset starts at the first retained offset (kafka-go's default `StartOffset`, which `readerConfig` in `internal/adapters/inbound/kafka/kafka.go` leaves unset), so the consumer reads the whole topic again.
+4. Wait until the new group has no lag: `kafka-consumer-groups.sh --bootstrap-server "$KAFKA_BROKERS" --describe --group shipping-and-tracking-areas-r2`.
+5. Verify the view: `SELECT node_id, postal_prefix, updated_at FROM node_destinations WHERE node_id IN (...);`. Every node a caller will send must have a row with a non-empty `postal_prefix`. An empty prefix means the node's registered postal code has no letter or digit from A-Z 0-9 and must be corrected in node-topology.
+6. Keep the new group id; it is now the stable one. (Going back to the old id is harmless, its committed offsets resume and every id in between is already claimed, but it gains nothing.)
+
+Enabling a caller earlier is costly: a request for a node the view does not hold answers `409 destination-prefix-unavailable`, and that refusal is stored under the caller's `Idempotency-Key` and replayed for 24 hours, even after the node has arrived.
