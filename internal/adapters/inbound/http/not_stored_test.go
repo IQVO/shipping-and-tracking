@@ -13,16 +13,18 @@ import (
 
 // Which answers the Idempotency-Key middleware does NOT store is decided in
 // one place, writeError, for the refusals the same request can pass later:
-// the optimistic-lock conflict and the return destination whose node fact has
-// not arrived (ADR 0018). Every other typed error of the catalogue, and an
+// the optimistic-lock conflict, the return destination whose node fact has
+// not arrived (ADR 0018) and the pickup point that is not ACTIVE yet (ADR
+// 0016, addendum of 2026-11-18). Every other typed error of the catalogue, and an
 // unmapped one, is left to the middleware's own rule (stored below 500).
 func TestWriteErrorMarksOnlyTheRetryableRefusalsAsNotStored(t *testing.T) {
 	notStored := map[error]bool{}
 	for _, err := range notStoredUnderKey {
 		notStored[err] = true
 	}
-	if len(notStored) != 2 || !notStored[ports.ErrConcurrentUpdate] || !notStored[shipto.ErrDestinationPrefixUnavailable] {
-		t.Fatalf("notStoredUnderKey = %v, want exactly the optimistic-lock conflict and the destination refusal", notStoredUnderKey)
+	if len(notStored) != 3 || !notStored[ports.ErrConcurrentUpdate] || !notStored[shipto.ErrDestinationPrefixUnavailable] ||
+		!notStored[shipto.ErrPickupPointUnavailable] {
+		t.Fatalf("notStoredUnderKey = %v, want exactly the optimistic-lock conflict, the destination refusal and the pickup refusal", notStoredUnderKey)
 	}
 	errs := []error{errors.New("an error no catalogue entry matches")}
 	for _, entry := range problemCatalogue {

@@ -27,15 +27,20 @@ func pickupFixture(t *testing.T, state string) *fixture {
 	t.Helper()
 	f := newFixture(t)
 	f.gateway.Put(pickupOrder, shipto.Address{DestinationKind: "PICKUP_POINT", PickupPointID: pickupPoint})
-	if state == "" {
-		return f
+	if state != "" {
+		seedPoint(t, f, state)
 	}
+	return f
+}
+
+// seedPoint registers the point in the view, in state.
+func seedPoint(t *testing.T, f *fixture, state string) {
+	t.Helper()
 	if err := f.store.Points().Register(context.Background(), repository.PickupPoint{
 		ID: pickupPoint, StationNodeID: "node-ds-07", PostalPrefix: "07095000", State: state,
 	}); err != nil {
 		t.Fatalf("seed point: %v", err)
 	}
-	return f
 }
 
 // L1: the refusal is declared where the route answers it.

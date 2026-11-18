@@ -48,6 +48,18 @@ func pgPickupServer(t *testing.T) (*httptest.Server, *pgtest.Pool, *usecases.Not
 	return srv, pool, usecases.NewNotePickupPoint(d)
 }
 
+// wantAnswer posts the pickup label request under key and fails unless the
+// answer has that status and that Idempotency-Replayed header ("" for an
+// answer that was executed, "true" for a replayed one). It returns the body.
+func wantAnswer(t *testing.T, srv *httptest.Server, key, when string, status int, replayed string) string {
+	t.Helper()
+	code, h, body := postH(t, srv, "/labels", key, pickupBody)
+	if code != status || h.Get("Idempotency-Replayed") != replayed {
+		t.Fatalf("%s = %d %s (replayed=%q), want %d (replayed=%q)", when, code, body, h.Get("Idempotency-Replayed"), status, replayed)
+	}
+	return body
+}
+
 // pickup-point-unavailable is a refusal the same request can pass later (the
 // point is activated), so it is NOT stored under the caller's Idempotency-Key
 // (ADR 0016, addendum of 2026-11-18): the refusal leaves no key row, the same
@@ -64,9 +76,8 @@ func TestPickupRefusalIsNotStoredSoItsKeyRetriesTheWork(t *testing.T) {
 		t.Fatalf("NodeRegistered: %v", err)
 	}
 
-	code1, h1, body1 := postH(t, srv, "/labels", key, pickupBody)
-	if code1 != http.StatusUnprocessableEntity || !strings.Contains(body1, slugNoPickupPoint) || h1.Get("Idempotency-Replayed") != "" {
-		t.Fatalf("first answer = %d %s (replayed=%q), want a fresh 422 %s", code1, body1, h1.Get("Idempotency-Replayed"), slugNoPickupPoint)
+	if body1 := wantAnswer(t, srv, key, "first answer", http.StatusUnprocessableEntity, ""); !strings.Contains(body1, slugNoPickupPoint) {
+		t.Fatalf("first answer = %s, want %s", body1, slugNoPickupPoint)
 	}
 	if n := keyRows(t, pool, key); n != 0 {
 		t.Errorf("%d idempotency rows of the key after the refusal, want 0: the key insert rolls back with the refusal", n)
@@ -78,18 +89,14 @@ func TestPickupRefusalIsNotStoredSoItsKeyRetriesTheWork(t *testing.T) {
 		t.Fatalf("NodeActivated: %v", err)
 	}
 
-	code2, h2, body2 := postH(t, srv, "/labels", key, pickupBody)
-	if code2 != http.StatusCreated || h2.Get("Idempotency-Replayed") != "" {
-		t.Fatalf("same key after NodeActivated = %d %s (replayed=%q), want the work executed: a fresh 201", code2, body2, h2.Get("Idempotency-Replayed"))
-	}
+	body2 := wantAnswer(t, srv, key, "same key after NodeActivated (the work executed)", http.StatusCreated, "")
 	var prefix string
 	if err := pool.QueryRow(ctx, `SELECT destination_postal_prefix FROM shipping_labels`).Scan(&prefix); err != nil || prefix != "07095000" {
 		t.Fatalf("label prefix = %q (%v), want the point's 07095000", prefix, err)
 	}
 
-	code3, h3, body3 := postH(t, srv, "/labels", key, pickupBody)
-	if code3 != http.StatusCreated || body3 != body2 || h3.Get("Idempotency-Replayed") != "true" {
-		t.Fatalf("third identical request = %d %s (replayed=%q), want the stored 201 replayed", code3, body3, h3.Get("Idempotency-Replayed"))
+	if body3 := wantAnswer(t, srv, key, "third identical request (the stored 201 replayed)", http.StatusCreated, "true"); body3 != body2 {
+		t.Fatalf("third identical request = %s, want the stored answer %s", body3, body2)
 	}
 	if labels, events, rows := count(t, pool, "shipping_labels"), count(t, pool, "outbox_events"), keyRows(t, pool, key); labels != 1 || events != 1 || rows != 1 {
 		t.Fatalf("labels=%d outbox=%d key rows=%d after the replay, want 1/1/1", labels, events, rows)

@@ -64,9 +64,15 @@ func decodeJSON(r *http.Request, dest any) error {
 //   - shipto.ErrDestinationPrefixUnavailable: the destination node's
 //     registration has not been consumed yet; it commits nothing and the
 //     retry is served once the node fact has arrived (ADR 0018).
+//   - shipto.ErrPickupPointUnavailable: the order's pickup point is not held
+//     ACTIVE yet; it commits nothing and the retry is served once the point's
+//     NodeRegistered and NodeActivated have been consumed. A RETIRED point is
+//     refused again on every retry, which is harmless (ADR 0016, addendum of
+//     2026-11-18).
 var notStoredUnderKey = []error{
 	ports.ErrConcurrentUpdate,
 	shipto.ErrDestinationPrefixUnavailable,
+	shipto.ErrPickupPointUnavailable,
 }
 
 // passesLater reports whether err is one of the notStoredUnderKey refusals.
