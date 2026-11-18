@@ -7,25 +7,38 @@ import (
 	"time"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/ports"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 	"github.com/claudioed/shipping-and-tracking/internal/application/views"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
 
 // IssueReturnLabelCmd is the in-org request of customer-returns, the reverse
-// twin of IssueLabelCmd (ADR 0017).
+// twin of IssueLabelCmd (ADR 0017). The return destination is named by
+// EXACTLY ONE of DestinationNodeID - the node the return goes to, whose prefix
+// this context derives from its own node view (ADR 0018) - and the deprecated
+// DestinationPostalPrefix, a prefix the caller supplies.
 type IssueReturnLabelCmd struct {
 	ReturnAuthorizationID   string
 	OrderID                 string
 	PackageNo               int
+	DestinationNodeID       string
 	DestinationPostalPrefix string
 }
 
 func (c IssueReturnLabelCmd) validate() error {
+	byNode := c.DestinationNodeID != ""
+	if byNode == (c.DestinationPostalPrefix != "") {
+		return shared.Invalid("exactly one of destinationNodeId and destinationPostalPrefix must be sent")
+	}
+	prefix := c.DestinationPostalPrefix
+	if byNode {
+		prefix = placeholderPrefix // derived later, from the node view
+	}
 	_, _, err := label.Issue(label.NewLabel{
 		Ref: "x", TrackingNumber: "x", PackageNo: c.PackageNo, OrderID: c.OrderID,
 		Purpose: label.PurposeReturn, ReturnAuthorizationID: c.ReturnAuthorizationID,
-		Tier: returnTier, StopKey: placeholderStopKey, DestinationPostalPrefix: c.DestinationPostalPrefix,
+		Tier: returnTier, StopKey: placeholderStopKey, DestinationPostalPrefix: prefix,
 	}, time.Time{})
 	return err
 }
@@ -48,9 +61,12 @@ type IssueReturnLabel struct{ writer }
 func NewIssueReturnLabel(d Deps) *IssueReturnLabel { return &IssueReturnLabel{writer{d}} }
 
 // Execute issues the reverse label. Errors: shared.ErrValidation (also for an
-// order customer-ordering does not know), label.ErrLabelAlreadyIssued (one
-// label per (returnAuthorizationId, packageNo)), label.ErrTrackingNumberTaken
-// (after one retry with a new number), ports.ErrShipToUnavailable. Every call
+// order customer-ordering does not know, and for a destination named twice or
+// not at all), label.ErrLabelAlreadyIssued (one label per
+// (returnAuthorizationId, packageNo)), shipto.ErrDestinationPrefixUnavailable
+// (the destination node has no usable prefix in the local view),
+// label.ErrTrackingNumberTaken (after one retry with a new number),
+// ports.ErrShipToUnavailable. Every call
 // is counted once, as issued or as rejected with the reason (Deps.Metrics).
 func (u *IssueReturnLabel) Execute(ctx context.Context, cmd IssueReturnLabelCmd) (views.ReturnLabel, error) {
 	v, err := u.execute(ctx, cmd)
@@ -68,6 +84,12 @@ func (u *IssueReturnLabel) execute(ctx context.Context, cmd IssueReturnLabelCmd)
 	} else if hit {
 		return views.ReturnLabel{}, fmt.Errorf("%w: label %s covers package %d of return %s", label.ErrLabelAlreadyIssued,
 			existing.Ref(), cmd.PackageNo, cmd.ReturnAuthorizationID)
+	}
+	// The local read before the network call: a refusal costs customer-ordering
+	// nothing.
+	prefix, err := u.destinationPrefix(ctx, cmd)
+	if err != nil {
+		return views.ReturnLabel{}, err
 	}
 	addr, err := u.ShipTo.GetShipTo(ctx, cmd.OrderID)
 	if errors.Is(err, ports.ErrNotFound) {
@@ -87,7 +109,7 @@ func (u *IssueReturnLabel) execute(ctx context.Context, cmd IssueReturnLabelCmd)
 	in := label.NewLabel{
 		PackageNo: cmd.PackageNo, OrderID: cmd.OrderID, Purpose: label.PurposeReturn,
 		ReturnAuthorizationID: cmd.ReturnAuthorizationID, Tier: returnTier,
-		StopKey: stopKey, DestinationPostalPrefix: cmd.DestinationPostalPrefix,
+		StopKey: stopKey, DestinationPostalPrefix: prefix,
 	}
 	// One retry with a fresh tracking number answers a generator collision
 	// (ADR 0002 A2).
@@ -101,6 +123,30 @@ func (u *IssueReturnLabel) execute(ctx context.Context, cmd IssueReturnLabelCmd)
 		}
 		return v, err
 	}
+}
+
+// destinationPrefix is the prefix the label carries. A destination named by
+// its node gets the prefix this context derived for that node (ADR 0018): one
+// owner per capability, the caller holds no address data. Only the prefix is
+// asked of the view - whether the node is the right one, or active, is the
+// caller's policy. The deprecated form is taken as sent, the view unread.
+func (u *IssueReturnLabel) destinationPrefix(ctx context.Context, cmd IssueReturnLabelCmd) (string, error) {
+	if cmd.DestinationNodeID == "" {
+		return cmd.DestinationPostalPrefix, nil
+	}
+	node, err := u.NodeDestinations.Get(ctx, cmd.DestinationNodeID)
+	if errors.Is(err, ports.ErrNotFound) {
+		return "", fmt.Errorf("%w: the registration of node %s has not been consumed by this context",
+			shipto.ErrDestinationPrefixUnavailable, cmd.DestinationNodeID)
+	}
+	if err != nil {
+		return "", err
+	}
+	if node.PostalPrefix == "" {
+		return "", fmt.Errorf("%w: the registered postal code of node %s has no letter or digit from A-Z 0-9",
+			shipto.ErrDestinationPrefixUnavailable, cmd.DestinationNodeID)
+	}
+	return node.PostalPrefix, nil
 }
 
 // create issues the reverse label and publishes LabelIssued; no journey, no

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/ports"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
@@ -18,6 +19,7 @@ var rejectionReasons = []struct {
 	{shared.ErrValidation, "validation-failed"},
 	{ports.ErrShipToUnavailable, "ship-to-unavailable"},
 	{label.ErrLabelAlreadyIssued, "label-already-issued"},
+	{shipto.ErrDestinationPrefixUnavailable, "destination-prefix-unavailable"},
 	{label.ErrTrackingNumberTaken, "tracking-number-taken"},
 	{ports.ErrConcurrentUpdate, "concurrent-update"},
 }

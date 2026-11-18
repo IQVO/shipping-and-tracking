@@ -38,7 +38,7 @@ func newFixtureLogged(t *testing.T, logger *slog.Logger) *fixture {
 	d := usecases.Deps{
 		Labels: s.Labels(), Snapshots: s.Snapshots(), Journeys: s.Journeys(), Catalog: s.Catalog(), Inbox: s.Inbox(),
 		Outbox: s.Outbox(), UoW: s.UnitOfWork(), Clock: memory.NewClock(t0), IDs: &memory.SequentialIDs{}, ShipTo: gw,
-		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{},
+		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{}, NodeDestinations: s.NodeDestinations(),
 	}
 	srv := httptest.NewServer(inbound.NewRouter(&inbound.Server{
 		IssueLabel: usecases.NewIssueLabel(d), IssueReturnLabel: usecases.NewIssueReturnLabel(d), VoidLabel: usecases.NewVoidLabel(d),
