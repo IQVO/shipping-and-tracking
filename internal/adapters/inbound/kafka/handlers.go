@@ -50,6 +50,12 @@ const (
 	ConsumerLastMile     = "last-mile-delivery"
 	ConsumerCatalog      = "offer-availability"
 	ConsumerNodeTopology = "node-topology"
+	// ConsumerNodeDestinations is the inbox identity of the NodeDestinationView
+	// fold alone (ADR 0018). It is NOT ConsumerNodeTopology: an event id the
+	// older folds of the node-topology topic already claimed is still new to
+	// this one, so a replay of the topic fills the view and the older folds
+	// skip what they have seen.
+	ConsumerNodeDestinations = "node-topology.node-destinations"
 )
 
 // Departure and arrival vocabulary of linehaul (ADR 0002 A20).
