@@ -45,46 +45,83 @@ func pgReturnServer(t *testing.T) (*httptest.Server, *pgtest.Pool) {
 	return srv, pool
 }
 
-// A characterization, not a wish (ADR 0018, "Known cost"): the middleware
-// stores every answer below 500 except concurrent-update, so the
-// destination-prefix-unavailable refusal is stored under the caller's key and
-// REPLAYED to a retry of that key even after the node fact has arrived, until
-// the row is purged (24 hours). The work itself is retryable: a new key is
-// served. This PR deliberately leaves that rule alone; when the rule changes,
-// this test is the one to flip.
-func TestReturnLabelDestinationRefusalIsStoredAndReplayedUnderItsKey(t *testing.T) {
-	srv, pool := pgReturnServer(t)
-	body := returnBody("ret-1", `,"destinationNodeId":"node-rc-01"`)
-
-	code1, h1, body1 := postH(t, srv, "/return-labels", "ret-1/1", body)
-	if code1 != http.StatusConflict || !strings.Contains(body1, "destination-prefix-unavailable") || h1.Get("Idempotency-Replayed") != "" {
-		t.Fatalf("first answer = %d %s (replayed=%q), want a fresh 409 destination-prefix-unavailable", code1, body1, h1.Get("Idempotency-Replayed"))
+// keyRows counts the idempotency rows of one key.
+func keyRows(t *testing.T, pool *pgtest.Pool, key string) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM idempotency_keys WHERE key = $1`, key).Scan(&n); err != nil {
+		t.Fatal(err)
 	}
-	var stored int
-	if err := pool.QueryRow(context.Background(), `SELECT status_code FROM idempotency_keys WHERE key = $1`, "ret-1/1").Scan(&stored); err != nil || stored != http.StatusConflict {
-		t.Fatalf("stored outcome = %d (%v), want 409 kept under the key", stored, err)
-	}
+	return n
+}
 
-	// The node fact arrives.
+// seedReturnsNode is the node fact arriving: node-rc-01 with prefix 07750.
+func seedReturnsNode(t *testing.T, pool *pgtest.Pool) {
+	t.Helper()
 	if err := postgres.NewNodeDestinationRepo(pool).Upsert(context.Background(),
 		repository.NodeDestination{NodeID: "node-rc-01", PostalPrefix: "07750"}); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	code2, h2, body2 := postH(t, srv, "/return-labels", "ret-1/1", body)
-	if code2 != http.StatusConflict || body2 != body1 || h2.Get("Idempotency-Replayed") != "true" {
-		t.Fatalf("same key after the node fact = %d %s (replayed=%q), want the stored 409 replayed", code2, body2, h2.Get("Idempotency-Replayed"))
+// destination-prefix-unavailable is a refusal the same request can pass later
+// (the node fact arrives), so it is NOT stored under the caller's
+// Idempotency-Key (ADR 0018): the refusal leaves no key row, the same request
+// under the same key is executed again once the node is known, and from then
+// on the key replays that success like any other.
+func TestReturnLabelDestinationRefusalIsNotStoredSoItsKeyRetriesTheWork(t *testing.T) {
+	srv, pool := pgReturnServer(t)
+	const key = "ret-1/1"
+	body := returnBody("ret-1", `,"destinationNodeId":"node-rc-01"`)
+
+	code1, h1, body1 := postH(t, srv, "/return-labels", key, body)
+	if code1 != http.StatusConflict || !strings.Contains(body1, "destination-prefix-unavailable") || h1.Get("Idempotency-Replayed") != "" {
+		t.Fatalf("first answer = %d %s (replayed=%q), want a fresh 409 destination-prefix-unavailable", code1, body1, h1.Get("Idempotency-Replayed"))
 	}
-	if n := count(t, pool, "shipping_labels"); n != 0 {
-		t.Fatalf("%d labels after the replay, want 0", n)
+	if n := keyRows(t, pool, key); n != 0 {
+		t.Fatalf("%d idempotency rows of the key after the refusal, want 0: the key insert rolls back with the refusal", n)
 	}
 
-	code3, h3, body3 := postH(t, srv, "/return-labels", "ret-1/1/retry", body)
-	if code3 != http.StatusCreated || h3.Get("Idempotency-Replayed") != "" {
-		t.Fatalf("a new key after the node fact = %d %s, want 201", code3, body3)
+	seedReturnsNode(t, pool)
+
+	code2, h2, body2 := postH(t, srv, "/return-labels", key, body)
+	if code2 != http.StatusCreated || h2.Get("Idempotency-Replayed") != "" {
+		t.Fatalf("same key after the node fact = %d %s (replayed=%q), want the work executed: a fresh 201", code2, body2, h2.Get("Idempotency-Replayed"))
 	}
 	var prefix string
 	if err := pool.QueryRow(context.Background(), `SELECT destination_postal_prefix FROM shipping_labels`).Scan(&prefix); err != nil || prefix != "07750" {
 		t.Fatalf("label prefix = %q (%v), want the node's 07750", prefix, err)
+	}
+
+	code3, h3, body3 := postH(t, srv, "/return-labels", key, body)
+	if code3 != http.StatusCreated || body3 != body2 || h3.Get("Idempotency-Replayed") != "true" {
+		t.Fatalf("third identical request = %d %s (replayed=%q), want the stored 201 replayed", code3, body3, h3.Get("Idempotency-Replayed"))
+	}
+	if labels, events, rows := count(t, pool, "shipping_labels"), count(t, pool, "outbox_events"), keyRows(t, pool, key); labels != 1 || events != 1 || rows != 1 {
+		t.Fatalf("labels=%d outbox=%d key rows=%d after the replay, want 1/1/1", labels, events, rows)
+	}
+}
+
+// A response that is not stored leaves the key FREE, not bound to the refused
+// request: the key insert is rolled back with everything else, so another
+// body under the same key is a new request, not idempotency-key-reused. Once
+// a request under the key is stored, the key is bound to it as always.
+func TestANonStoredRefusalLeavesItsKeyFreeForAnotherRequest(t *testing.T) {
+	srv, pool := pgReturnServer(t)
+	const key = "ret-1/1"
+	byNode := returnBody("ret-1", `,"destinationNodeId":"node-rc-01"`)
+	byPrefix := returnBody("ret-1", `,"destinationPostalPrefix":"01310"`)
+
+	if code, body := post(t, srv, "/return-labels", key, byNode); code != http.StatusConflict || !strings.Contains(body, "destination-prefix-unavailable") {
+		t.Fatalf("refusal = %d %s", code, body)
+	}
+	if code, body := post(t, srv, "/return-labels", key, byPrefix); code != http.StatusCreated {
+		t.Fatalf("another body under the same key = %d %s, want it executed as a new request (201)", code, body)
+	}
+	if code, body := post(t, srv, "/return-labels", key, byNode); code != http.StatusConflict || !strings.Contains(body, "idempotency-key-reused") {
+		t.Fatalf("the first body again = %d %s, want 409 idempotency-key-reused: the key now belongs to the stored request", code, body)
+	}
+	if n := keyRows(t, pool, key); n != 1 {
+		t.Fatalf("%d idempotency rows of the key, want 1", n)
 	}
 }
