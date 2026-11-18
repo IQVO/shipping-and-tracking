@@ -86,3 +86,13 @@ The node-topology consumer also handles the node lifecycle events `NodeRegistere
 `NodeTopologyHandlers`, ADR 0016). They maintain the pickup-point read model and are not rows of the table
 above, so "types not in the table are acknowledged and ignored" no longer holds for them. With them the
 contract (`apis/asyncapi.yaml`) lists 14 consumed types from five topics.
+
+## Addendum 2026-11-18: the node destination view (ADR 0018)
+
+`com.retailnetwork.logistics.node-topology.node.NodeRegistered` now also feeds a third read model of
+node-topology's facts, `NodeDestinationView` (`node_destinations`): one row per node of ANY type, holding the
+destination prefix this context derives from the registered `postalCode` (fields relied on: `nodeId`,
+`postalCode`; the postal code itself is not kept). It is folded in the same consumer group
+(`ST_AREAS_CONSUMER_GROUP`) but under its own inbox identity, `node-topology.node-destinations`, so a
+replay of the topic fills it while the older folds skip what they already claimed. `NodeActivated`,
+`NodeSuspended` and `NodeRetired` do not reach it. No new consumed type, topic or consumer group.

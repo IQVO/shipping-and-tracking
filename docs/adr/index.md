@@ -31,3 +31,4 @@ The *Status* column is copied from each ADR's own `## Status` section.
 | [0015](./0015-carrier-handoff-and-carrier-events-webhook.md) | carrier handoff and the external carrier webhook (C4) | Accepted (2026-11-13) |
 | [0016](./0016-pickup-collection.md) | pickup collection - deposit, collect and the uncollected hold | Accepted (2026-11-13) |
 | [0017](./0017-reverse-return-labels.md) | reverse labels for customer returns (C8): purpose, return-authorization link and the /return-labels route | Accepted (2026-11-14) |
+| [0018](./0018-return-destination-prefix-from-the-destination-node.md) | the label owner derives the return destination prefix from the destination node (supersedes one part of 0017) | Accepted (2026-11-18) |
