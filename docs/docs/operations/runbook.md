@@ -158,8 +158,8 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 **What the inbox does to a redelivered id.** A claim is the pair `(consumer, CloudEvents id)` in `processed_events`, written in the transaction of the effect and kept 30 days. The older folds of the node-topology topic (`area_modes`, `pickup_points`) claim as `node-topology`; the `node_destinations` fold claims as `node-topology.node-destinations`. On a replay of the topic:
 
 - The `node_destinations` fold has never claimed those ids, so each `NodeRegistered` is applied once; a second delivery of the same id is skipped (`TestNoteNodeDestinationSkipsARedeliveredEventID`).
-- The older folds skip every id they claimed within the last 30 days: `area_modes` and `pickup_points` do not change, and a pickup point is not demoted to `PROPOSED` (`TestAReplayedNodeRegisteredFillsTheNodeViewAndLeavesThePickupPointAlone`, both in `internal/application/usecases/node_destinations_test.go`).
-- An id older than 30 days is no longer claimed and IS applied again by the older folds. `area_modes` drops it (the assignment-version guard). `pickup_points` re-folds the point's history in its original order, so a point is `PROPOSED` between its replayed `NodeRegistered` and its replayed `NodeActivated`, and a pickup label of that point is refused for that moment. This arises only if the topic retains more than 30 days.
+- The older folds skip every id they claimed within the last 30 days: `area_modes` and `pickup_points` do not change (`TestAReplayedNodeRegisteredFillsTheNodeViewAndLeavesThePickupPointAlone`, both in `internal/application/usecases/node_destinations_test.go`).
+- An id older than 30 days is no longer claimed and IS applied again by the older folds. `area_modes` drops it (the assignment-version guard). `pickup_points` applies a replayed `NodeRegistered` as a registration applied again: station and prefix are written with the same values and the state is kept, so a point is not demoted to `PROPOSED` (ADR 0016, addendum 2026-11-18). A replayed status fact sets the state it names, so a point walks through its recorded history and ends in its current state (see [Repairing the pickup point view](#repairing-the-pickup-point-view) for what that means for a label). This arises only if the topic retains more than 30 days.
 - A message that was dead-lettered the first time is dead-lettered again: expect duplicates on `retailnetwork.node-topology.events.dlq`.
 
 **The dependency.** The replay only finds what the topic still retains. A node whose `NodeRegistered` is past the topic's retention cannot be restored this way and stays `409 destination-prefix-unavailable`. This service has no other source: it never calls node-topology, and node-topology does not publish a node's registration a second time.
@@ -174,3 +174,37 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 6. Keep the new group id; it is now the stable one. (Going back to the old id is harmless, its committed offsets resume and every id in between is already claimed, but it gains nothing.)
 
 A caller enabled earlier is refused, not stuck: a request for a node the view does not hold answers `409 destination-prefix-unavailable`, and that refusal is not stored under the caller's `Idempotency-Key` (ADR 0018). The caller retries the same request with the same key; it is executed again each time and is served as soon as the node's row exists. Until then no return label can be issued for that node, which is why the rebuild comes first.
+
+### Repairing the pickup point view
+
+`pickup_points` (ADR 0016) holds node-topology's pickup points: serving station, prefix and state. Every version before the fix of 2026-11-18 folded a status fact (`NodeActivated`, `NodeSuspended`, `NodeRetired`) as a whole row, so a database that ran one of them is damaged in three ways:
+
+- every pickup point that received a status fact has `station_node_id = ''` and `postal_prefix = ''`. A label for it was never issued: `POST /labels` answered 422 `validation-failed` with the detail `destinationPostalPrefix must be 1 to 16 characters from A-Z 0-9`;
+- every node of another type that received a status fact has a row of its own, with both columns empty;
+- a retired point has no row (it was deleted; it is now kept as `RETIRED`).
+
+The fix stops the damage and repairs nothing: station and prefix come from `NodeRegistered` alone, which node-topology emits ONCE per node, and this service has no other source. No migration is involved. This repository has no replay tooling: the repair is the registrations applied again.
+
+**What the inbox does to a redelivered id.** The pickup-point fold claims every node fact as `(node-topology, CloudEvents id)` in `processed_events`, the identity it shares with the `area_modes` fold; claims are kept 30 days. On a replay of the topic under a new consumer group:
+
+- a `NodeRegistered` whose claim still stands is SKIPPED, and the blank row stays blank. A new consumer group alone repairs only the points whose registration was consumed more than 30 days ago;
+- once the claims of that identity are cleared, the replayed `NodeRegistered` restores station and prefix and keeps the point's state.
+
+Both halves are `TestAReplayedRegistrationRepairsABlankedRowOnlyOnceItsClaimIsCleared` (`internal/adapters/inbound/kafka/handlers_pickup_points_test.go`). So the claims of `node-topology` have to be cleared. What that does to the other folds of the topic: `area_modes` applies each replayed `ServiceAreaAssigned` again and drops it under the assignment-version guard; `node_destinations` claims under its own identity `node-topology.node-destinations`, which is NOT cleared, so it skips what it claimed (and rewrites the same prefix for an id older than 30 days).
+
+**What the replay does to a point's state.** The status facts are replayed too, in their original order. A point that is `ACTIVE` now and was suspended once is `SUSPENDED` between its replayed `NodeSuspended` and the `NodeActivated` that followed. A point retired before the fix has no row: its replayed registration inserts it `PROPOSED`, its `NodeActivated` makes it `ACTIVE` and its `NodeRetired` makes it `RETIRED` for good. All facts of a node are on one partition and are replayed back to back, so each of these moments is short, but a pickup label asked in one of them gets the answer of that moment, and a 422 `pickup-point-unavailable` is stored under the caller's `Idempotency-Key` for 24 hours. Run the repair while no pickup labels are being requested.
+
+**The dependency.** The replay only finds what the topic still retains. A point whose `NodeRegistered` is past the topic's retention cannot be repaired this way: its row stays blank (or absent) and its labels stay refused. This service never calls node-topology, and node-topology does not publish a registration a second time.
+
+**Procedure**
+
+1. Deploy the version that carries the fix (no migration).
+2. List the damage: `SELECT id, state, updated_at FROM pickup_points WHERE postal_prefix = '' ORDER BY id;`. For every pickup point among those ids, and for every pickup point that has no row at all, confirm that the topic still holds its registration: `kafka-console-consumer.sh --bootstrap-server "$KAFKA_BROKERS" --topic retailnetwork.node-topology.events --from-beginning --timeout-ms 30000 | grep NodeRegistered | grep '"nodeId":"<node id>"'`. The line also tells the node's type: an id whose `nodeType` is not `PICKUP_POINT` is one of the rows that should never have existed. No line for a pickup point means the replay will not repair it: escalate to node-topology's owners, who hold its station and postal code.
+3. Clear the claims of the pickup-point fold: `DELETE FROM processed_events WHERE consumer = 'node-topology';`.
+4. Set `config.areasConsumerGroup` (`ST_AREAS_CONSUMER_GROUP`) to a group id that has never existed, for example `shipping-and-tracking-areas-r3`, and roll out. A group with no committed offset starts at the first retained offset, so the consumer reads the whole topic again.
+5. Wait until the new group has no lag: `kafka-consumer-groups.sh --bootstrap-server "$KAFKA_BROKERS" --describe --group shipping-and-tracking-areas-r3`.
+6. Verify: `SELECT id, station_node_id, postal_prefix, state FROM pickup_points ORDER BY id;`. Every pickup point has a non-empty `postal_prefix`, and its state is the one node-topology reports for it.
+7. Remove the rows of nodes that are not pickup points: `DELETE FROM pickup_points WHERE postal_prefix = '';`, after checking each remaining id against step 2. A registration always carries a postal code, so after the replay an empty prefix is a node of another type, or a pickup point whose registration the topic no longer holds (the escalation of step 2: deleting that row changes its refusal from 422 `validation-failed` to 422 `pickup-point-unavailable`, nothing else). The fixed fold never writes such a row again.
+8. Keep the new group id; it is now the stable one.
+
+A prefix that is restored but holds a character outside A-Z 0-9 (a registered postal code such as `07750-000`) still fails the label's prefix rule: the point's labels answer 422 `validation-failed` with the detail above. That is not damage and the replay does not change it; see the open point in the addendum to ADR 0016.

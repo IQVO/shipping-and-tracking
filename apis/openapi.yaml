@@ -86,8 +86,8 @@ paths:
             order is collected at a pickup point that this context's local view does not hold, or
             holds in a state other than ACTIVE — PROPOSED, SUSPENDED or RETIRED; the detail names
             the point and its state, and no label is stored. The refusal follows the point's state,
-            which node-topology's node facts change; it is stored under the Idempotency-Key like
-            every other 4xx of this route, so a retry with the same key replays it; ADR 0016).
+            which node-topology's node facts change; it IS stored under the Idempotency-Key, so a
+            retry with the same key replays it for as long as the key lives; ADR 0016).
           content:
             application/problem+json:
               schema:

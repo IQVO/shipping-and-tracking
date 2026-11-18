@@ -7,11 +7,11 @@ paths:
 
 # REST API (inbound adapter)
 
-Routes to use cases, kept in sync with `apis/openapi.yaml` by hand (Spectral lints the document, nothing lints this list).
+Routes to use cases, kept in sync with `apis/openapi.yaml` by hand (Spectral lints the document, nothing lints this list). What IS tested is the spec against the code: every typed error of the model has an entry in the problem catalogue (`errors.go`) or is named as not an HTTP answer, and every route declares in `apis/openapi.yaml` every problem it can answer and none it cannot (`problem_parity_test.go`, `problem_typed_errors_test.go`). A new `Err...` or a new route fails there until it is classified.
 
-- `POST /labels` -> `IssueLabel` (201; 409 `label-already-issued` / `tracking-number-taken` / `concurrent-update`; 422; 503 `ship-to-unavailable`)
+- `POST /labels` -> `IssueLabel` (201; 409 `label-already-issued` / `tracking-number-taken` / `concurrent-update`; 422 `validation-failed` / `address-suspect` / `pickup-point-unavailable` (the order's pickup point is not held ACTIVE in the local PickupPointView, ADR 0016); 503 `ship-to-unavailable`)
 - `POST /return-labels` -> `IssueReturnLabel` (201; 409 `label-already-issued` (one per (returnAuthorizationId, packageNo)) / `destination-prefix-unavailable` (no usable prefix for `destinationNodeId` in the local NodeDestinationView) / `tracking-number-taken` / `concurrent-update`; 422 (also both or neither of `destinationNodeId` and the deprecated `destinationPostalPrefix`); 503 `ship-to-unavailable`; ADR 0017, ADR 0018)
-- `POST /labels/{labelRef}/voids` -> `VoidLabel` (200; 404; 409 `void-after-handover`; 422)
+- `POST /labels/{labelRef}/voids` -> `VoidLabel` (200; 404; 409 `void-after-handover` / `journey-closed` / `concurrent-update`; 422)
 - `GET /journeys/{trackingNumber}` -> `GetJourney` (200; 404)
 - `POST /journeys/{trackingNumber}/scans` -> `RecordScan` (200; 404; 409 `duplicate-scan` / `scan-out-of-order` / `illegal-transition` / `journey-closed`; 422)
 - `GET /healthz` (liveness), `GET /readyz` (drain gate, Postgres ping, Kafka metadata; 503 `dependency-unavailable`)
