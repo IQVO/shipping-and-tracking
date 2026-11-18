@@ -76,18 +76,21 @@ type CatalogDimensionsView interface {
 	Get(ctx context.Context, catalogItemID string) (repository.CatalogDimensions, error)
 }
 
-// AreaModeView is the local read model of node-topology's ServiceAreaAssigned
-// (ADR 0015): the delivery mode and declared carrier options of each postal
-// prefix, staleness-guarded by the assignment version.
 // PickupPointView is the local read model of node-topology's pickup points
-// (ADR 0016).
+// (ADR 0016). Two writes, and neither touches the other's columns: a
+// registration writes the descriptive data, a status fact writes the state.
 type PickupPointView interface {
-	// Upsert stores the row; a RETIRED point is deleted.
-	Upsert(ctx context.Context, p repository.PickupPoint) error
+	// Register stores the descriptive data of a pickup point: its serving
+	// station and its prefix. A point the view does not hold is inserted in
+	// p.State; a point it holds keeps its own state, whatever it is, so a
+	// registration applied again never demotes it. A blank id is an error.
+	Register(ctx context.Context, p repository.PickupPoint) error
+	// SetState moves an existing point to state and changes nothing else. It
+	// reports whether a row changed: false for an id the view does not hold
+	// (no row is made of it) and for a RETIRED point (RETIRED is terminal).
+	SetState(ctx context.Context, id, state string) (bool, error)
 	// Get returns the point, or ErrNotFound.
 	Get(ctx context.Context, id string) (repository.PickupPoint, error)
-	// Delete forgets a retired point.
-	Delete(ctx context.Context, id string) error
 }
 
 // NodeDestinationView is the local read model of the destination prefix of
@@ -101,6 +104,9 @@ type NodeDestinationView interface {
 	Get(ctx context.Context, nodeID string) (repository.NodeDestination, error)
 }
 
+// AreaModeView is the local read model of node-topology's ServiceAreaAssigned
+// (ADR 0015): the delivery mode and declared carrier options of each postal
+// prefix, staleness-guarded by the assignment version.
 type AreaModeView interface {
 	// Apply stores the row when its assignment version is newer than the
 	// stored one; an older version is acknowledged and dropped, and so is an

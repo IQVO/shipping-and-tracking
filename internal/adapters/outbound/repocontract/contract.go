@@ -21,6 +21,8 @@ type Fixture struct {
 	Catalog   ports.CatalogDimensionsView
 	// NodeDestinations is the NodeDestinationView read model (ADR 0018).
 	NodeDestinations ports.NodeDestinationView
+	// PickupPoints is the PickupPointView read model (ADR 0016).
+	PickupPoints ports.PickupPointView
 	// Areas is the AreaModeView read model (ADR 0015, ADR 0019).
 	Areas  ports.AreaModeView
 	Inbox  ports.ProcessedEvents
@@ -55,6 +57,7 @@ func Run(t *testing.T, factory Factory) {
 		{"Stale", staleCases},
 		{"Catalog", catalogCases},
 		{"NodeDestination", nodeDestinationCases},
+		{"PickupPoint", pickupPointCases},
 		{"Area", areaCases},
 		{"Inbox", inboxCases},
 		{"UnitOfWork", unitOfWorkCases},

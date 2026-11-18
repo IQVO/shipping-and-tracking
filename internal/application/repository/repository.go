@@ -71,9 +71,19 @@ const (
 	DeliveryModeCarrierHandoff DeliveryMode = "CARRIER_HANDOFF"
 )
 
+// The states of a pickup point: node-topology's node lifecycle as the
+// PickupPointView keeps it (ADR 0016). RETIRED is terminal.
+const (
+	PickupPointProposed  = "PROPOSED"
+	PickupPointActive    = "ACTIVE"
+	PickupPointSuspended = "SUSPENDED"
+	PickupPointRetired   = "RETIRED"
+)
+
 // PickupPoint is one row of the PickupPointView read model: node-topology's
 // PICKUP_POINT nodes folded locally (ADR 0016). PostalPrefix is the point's
-// own labellable postal code.
+// own labellable postal code. StationNodeID and PostalPrefix are the
+// descriptive data a registration writes; State is what a status fact writes.
 type PickupPoint struct {
 	ID            string
 	StationNodeID string

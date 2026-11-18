@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/ports"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 	"github.com/claudioed/shipping-and-tracking/internal/application/usecases"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 )
@@ -89,6 +90,21 @@ func TestIssueLabelAnUnexpectedFailureIsAnInternalError(t *testing.T) {
 	wantErr(t, err, boom)
 	if len(m.rejected) != 1 || m.rejected[0] != "internal-error" {
 		t.Fatalf("rejected=%v, want [internal-error]", m.rejected)
+	}
+}
+
+// A pickup refusal is a refusal the caller can act on, counted under its own
+// slug: it is not an internal error (ADR 0016, addendum of 2026-11-18).
+func TestAPickupRefusalIsCountedUnderItsSlug(t *testing.T) {
+	r := pickupRig(t)
+	m := &recordingMetrics{}
+	r.deps.Metrics = m
+	putPickupPoint(t, r, "node-pnt-08", "SUSPENDED")
+	pickupOrder(t, r, "node-pnt-08")
+	_, err := usecases.NewIssueLabel(r.deps).Execute(context.Background(), issueCmd("PO-9", 1))
+	wantErr(t, err, shipto.ErrPickupPointUnavailable)
+	if len(m.rejected) != 1 || m.rejected[0] != "pickup-point-unavailable" || m.issued != 0 {
+		t.Fatalf("issued=%d rejected=%v, want one rejection pickup-point-unavailable", m.issued, m.rejected)
 	}
 }
 

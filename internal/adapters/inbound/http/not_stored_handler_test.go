@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/repository"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 )
 
 // markSpy stands where the Idempotency-Key middleware stands and hands every
@@ -30,12 +31,14 @@ func (s *markSpy) middleware(string) func(http.Handler) http.Handler {
 	}
 }
 
-// The handlers mark ONE refusal of the label routes as not to be stored under
-// the Idempotency-Key: destination-prefix-unavailable, which the same request
-// passes once the node fact has arrived (ADR 0018). Every other answer of
-// these routes - the success, the final refusals, a dependency failure - is
-// left unmarked, to the middleware's own rule.
-func TestOnlyTheDestinationRefusalIsMarkedNotToBeStored(t *testing.T) {
+// The handlers mark TWO refusals of the label routes as not to be stored
+// under the Idempotency-Key, the ones the same request passes later:
+// destination-prefix-unavailable, once the node fact has arrived (ADR 0018),
+// and pickup-point-unavailable, once the point is ACTIVE (ADR 0016, addendum
+// of 2026-11-18). Every other answer of these routes - the success, the final
+// refusals, a dependency failure - is left unmarked, to the middleware's own
+// rule.
+func TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored(t *testing.T) {
 	spy := &markSpy{}
 	f := newFixtureWith(t, nil, spy.middleware)
 	if err := f.store.NodeDestinations().Upsert(context.Background(), repository.NodeDestination{NodeID: prefixlessNode}); err != nil {
@@ -63,6 +66,18 @@ func TestOnlyTheDestinationRefusalIsMarkedNotToBeStored(t *testing.T) {
 		{"the label already issued", "/return-labels", byNode, nil, 409, "label-already-issued", false},
 		{"an outbound label", "/labels", issueBody, nil, 201, "", false},
 		{"the outbound label already issued", "/labels", issueBody, nil, 409, "label-already-issued", false},
+		{"a pickup point this context does not know", "/labels", pickupBody, func() {
+			f.gateway.Put(pickupOrder, shipto.Address{DestinationKind: "PICKUP_POINT", PickupPointID: pickupPoint})
+		}, 422, slugNoPickupPoint, true},
+		{"a pickup point that is not ACTIVE yet", "/labels", pickupBody, func() {
+			seedPoint(t, f, repository.PickupPointProposed)
+		}, 422, slugNoPickupPoint, true},
+		{"the same request once the point is ACTIVE", "/labels", pickupBody, func() {
+			if _, err := f.store.Points().SetState(context.Background(), pickupPoint, repository.PickupPointActive); err != nil {
+				t.Fatal(err)
+			}
+		}, 201, "", false},
+		{"the pickup label already issued", "/labels", pickupBody, nil, 409, "label-already-issued", false},
 	}
 	for _, s := range steps {
 		if s.before != nil {

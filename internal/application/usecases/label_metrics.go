@@ -18,6 +18,7 @@ var rejectionReasons = []struct {
 }{
 	{shared.ErrValidation, "validation-failed"},
 	{ports.ErrShipToUnavailable, "ship-to-unavailable"},
+	{shipto.ErrPickupPointUnavailable, "pickup-point-unavailable"},
 	{label.ErrLabelAlreadyIssued, "label-already-issued"},
 	{shipto.ErrDestinationPrefixUnavailable, "destination-prefix-unavailable"},
 	{label.ErrTrackingNumberTaken, "tracking-number-taken"},

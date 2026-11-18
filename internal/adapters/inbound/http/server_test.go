@@ -46,6 +46,7 @@ func newFixtureWith(t *testing.T, logger *slog.Logger, idem func(route string) f
 		Labels: s.Labels(), Snapshots: s.Snapshots(), Journeys: s.Journeys(), Catalog: s.Catalog(), Inbox: s.Inbox(),
 		Outbox: s.Outbox(), UoW: s.UnitOfWork(), Clock: memory.NewClock(t0), IDs: &memory.SequentialIDs{}, ShipTo: gw,
 		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{}, NodeDestinations: s.NodeDestinations(),
+		PickupPoints: s.Points(),
 	}
 	srv := httptest.NewServer(inbound.NewRouter(&inbound.Server{
 		IssueLabel: usecases.NewIssueLabel(d), IssueReturnLabel: usecases.NewIssueReturnLabel(d), VoidLabel: usecases.NewVoidLabel(d),

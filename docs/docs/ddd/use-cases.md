@@ -36,6 +36,7 @@ REST errors are RFC 9457 `application/problem+json`; `type` is the slug (`intern
 | --- | --- | --- |
 | `shared.ErrValidation` and malformed bodies | 422 | `validation-failed` |
 | `shipto.ErrAddressSuspect` | 422 | `address-suspect` |
+| `shipto.ErrPickupPointUnavailable` | 422 | `pickup-point-unavailable` |
 | missing `Idempotency-Key` | 400 | `idempotency-key-required` |
 | `ports.ErrNotFound` | 404 | `not-found` |
 | `label.ErrLabelAlreadyIssued` | 409 | `label-already-issued` |
@@ -60,11 +61,11 @@ Source: `internal/application/usecases/labels.go`, `internal/domain/label/label.
 - **Flow:**
   1. Validate the command with placeholder values; reject with `validation-failed`.
   2. Look up a label for `(poNumber, packageNo)`; a hit is `label-already-issued`.
-  3. Call `GetShipTo` on customer-ordering. A 404 becomes `validation-failed` ("orderId ... is unknown to customer-ordering"); any other failure is `ship-to-unavailable`.
+  3. Call `GetShipTo` on customer-ordering. A 404 becomes `validation-failed` ("orderId ... is unknown to customer-ordering"); any other failure is `ship-to-unavailable`. An answer `{destinationKind: PICKUP_POINT, pickupPointId}` takes the pickup branch instead of steps 4 and 5 (`issuePickup`, ADR 0016): the point is read from the local PickupPointView; a point the view does not hold, or holds in any state but `ACTIVE` (`PROPOSED`, `SUSPENDED`, `RETIRED`), refuses the issuance with `ErrPickupPointUnavailable`, answered 422 `pickup-point-unavailable`, and nothing is written. Otherwise the label takes the point's own prefix and a stop key of the point id, no address is read or sealed, and the journey starts with the point and its hold deadline.
   4. Validate the address, then run the deterministic deliverability check on it (`Address.Quality`, ADR 0011). A `SUSPECT` verdict refuses the issuance with `ErrAddressSuspect`, answered 422 `address-suspect`; the detail carries reason tokens only (`RECIPIENT_PLACEHOLDER`, `STREET_PLACEHOLDER`, `STREET_MISSING_NUMBER`, `CITY_PLACEHOLDER`, `POSTAL_CODE_TOO_SHORT`), and no label, journey, snapshot or event is written. Otherwise seal the address (AES-256-GCM, fresh nonce), derive `stopKey` (HMAC-SHA-256 of the normalised address) and the five-character postal prefix.
   5. In one transaction: mint `labelRef` (`lbl-<uuid>`) and a tracking number (`RN` plus 16 base-32 characters), save the label, save the sealed snapshot, **start the journey** (`StartJourney`, state `LABELLED`, version 1, no event of its own) and enqueue `LabelIssued`.
 - **Result:** `201` with the label metadata, never the address. The attempt is counted once in `shipping.labels.issued` as `issued` or `rejected` with the reason.
-- **Idempotency:** the `Idempotency-Key` replays the first response; a new key for the same package hits `label-already-issued`.
+- **Idempotency:** the `Idempotency-Key` replays the first stored response; a new key for the same package hits `label-already-issued`. `pickup-point-unavailable` is not stored (`notStoredUnderKey` in `internal/adapters/inbound/http/response.go`): the same request under the same key is executed again and is served once the point is `ACTIVE`, and that `201` is then what the key replays (ADR 0016, addendum 2026-11-18).
 
 ## IssueReturnLabel
 

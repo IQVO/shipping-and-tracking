@@ -81,9 +81,11 @@ type AreaApplier interface {
 	Execute(ctx context.Context, cmd usecases.ApplyAreaCmd) (usecases.ApplyAreaResult, error)
 }
 
-// PointNoter is the NotePickupPoint use case (ADR 0016).
+// PointNoter is the NotePickupPoint use case (ADR 0016): Execute for a
+// registration, ExecuteStatus for a status fact.
 type PointNoter interface {
 	Execute(ctx context.Context, cmd usecases.NotePointCmd) error
+	ExecuteStatus(ctx context.Context, cmd usecases.NotePointStatusCmd) error
 }
 
 // NodeNoter is the NoteNodeDestination use case (ADR 0018).
@@ -109,9 +111,9 @@ type nodeStateChangedData struct {
 
 // nodeStateTypes maps the node lifecycle events to the view's state column.
 var nodeStateTypes = map[string]string{
-	"com.retailnetwork.logistics.node-topology.node.NodeActivated": "ACTIVE",
-	"com.retailnetwork.logistics.node-topology.node.NodeSuspended": "SUSPENDED",
-	"com.retailnetwork.logistics.node-topology.node.NodeRetired":   "RETIRED",
+	"com.retailnetwork.logistics.node-topology.node.NodeActivated": repository.PickupPointActive,
+	"com.retailnetwork.logistics.node-topology.node.NodeSuspended": repository.PickupPointSuspended,
+	"com.retailnetwork.logistics.node-topology.node.NodeRetired":   repository.PickupPointRetired,
 }
 
 // pickupPointOf maps a registered node onto a read-model row; a non-pickup
@@ -124,7 +126,7 @@ func pickupPointOf(d nodeRegisteredData) repository.PickupPoint {
 	if d.ServingStationNodeID != nil {
 		station = *d.ServingStationNodeID
 	}
-	return repository.PickupPoint{ID: d.NodeID, StationNodeID: station, PostalPrefix: d.PostalCode, State: "PROPOSED"}
+	return repository.PickupPoint{ID: d.NodeID, StationNodeID: station, PostalPrefix: d.PostalCode, State: repository.PickupPointProposed}
 }
 
 // TypeNodeRegistered feeds the NodeDestinationView (every node type, ADR 0018)
@@ -177,8 +179,8 @@ func nodeHandlers(uc PointNoter, nodes NodeNoter) map[string]HandlerFunc {
 			if err != nil {
 				return err
 			}
-			return uc.Execute(ctx, usecases.NotePointCmd{Consumer: ConsumerNodeTopology, EventID: e.ID(),
-				Point: repository.PickupPoint{ID: d.NodeID, State: state}, Retired: state == "RETIRED"})
+			return uc.ExecuteStatus(ctx, usecases.NotePointStatusCmd{Consumer: ConsumerNodeTopology,
+				EventID: e.ID(), NodeID: d.NodeID, State: state})
 		}
 	}
 	return out

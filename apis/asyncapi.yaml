@@ -1157,7 +1157,7 @@ components:
       name: NodeActivated
       title: NodeActivated (consumed from node-topology)
       summary: A node became ACTIVE; a pickup point becomes labelable (ADR 0016).
-      description: "`type` = `com.retailnetwork.logistics.node-topology.node.NodeActivated`. Only the `nodeId` is read; an unknown node is acknowledged without an effect. Like NodeSuspended and NodeRetired it never reaches the NodeDestinationView: a node's destination prefix does not depend on its state (ADR 0018)."
+      description: "`type` = `com.retailnetwork.logistics.node-topology.node.NodeActivated`. Only the `nodeId` is read. It sets the state of the pickup point this context holds under that id to ACTIVE and changes nothing else: the point's serving station and prefix come from NodeRegistered alone. A node this context holds no pickup point of (any node of another type) is acknowledged without an effect and no row is made; a RETIRED point is not revived (ADR 0016, addendum 2026-11-18). Like NodeSuspended and NodeRetired it never reaches the NodeDestinationView: a node's destination prefix does not depend on its state (ADR 0018)."
       contentType: application/cloudevents+json
       tags:
         - name: shipping-and-tracking
@@ -1167,7 +1167,7 @@ components:
       name: NodeSuspended
       title: NodeSuspended (consumed from node-topology)
       summary: A node was suspended; a pickup point stops being labelable (ADR 0016).
-      description: "`type` = `com.retailnetwork.logistics.node-topology.node.NodeSuspended`. Only the `nodeId` is read."
+      description: "`type` = `com.retailnetwork.logistics.node-topology.node.NodeSuspended`. Only the `nodeId` is read. Sets the state of the held pickup point to SUSPENDED and changes nothing else; the same rules as NodeActivated for a node that is not a held pickup point and for a RETIRED one."
       contentType: application/cloudevents+json
       tags:
         - name: shipping-and-tracking
@@ -1176,8 +1176,8 @@ components:
     NodeRetired:
       name: NodeRetired
       title: NodeRetired (consumed from node-topology)
-      summary: A node was retired; its pickup-point row is deleted (ADR 0016).
-      description: "`type` = `com.retailnetwork.logistics.node-topology.node.NodeRetired`. Only the `nodeId` is read."
+      summary: A node was retired; its pickup point stays in the view as RETIRED, for good (ADR 0016).
+      description: "`type` = `com.retailnetwork.logistics.node-topology.node.NodeRetired`. Only the `nodeId` is read. Sets the state of the held pickup point to RETIRED and changes nothing else; the row is kept, RETIRED is terminal and no later status fact changes it. A node that is not a held pickup point is acknowledged without an effect."
       contentType: application/cloudevents+json
       tags:
         - name: shipping-and-tracking

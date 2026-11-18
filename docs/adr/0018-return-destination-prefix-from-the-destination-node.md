@@ -179,3 +179,19 @@ deprecated).
 - `apis/openapi.yaml` changed, so every pinned copy of it is stale until
   refreshed (vendor-connectivity today; customer-returns when it pins).
 - `POST /labels`, the outbound label and its events are unchanged.
+
+## Addendum 2026-11-18: the PickupPointView described above has changed
+
+"The read model" above describes `PickupPointView` as it was when this ADR was
+written: it "deletes a retired point and its status fold replaces the whole
+row". Both were defects or follow from one and are corrected by the addendum of
+the same date to [ADR 0016](./0016-pickup-collection.md): a status fact now
+changes only the state of an existing point, and a retired point keeps its row.
+Nothing decided in this ADR changes: `NodeDestinationView` stays its own view
+with its own inbox identity.
+
+The same addendum adds a third refusal to the list `notStoredUnderKey` that
+"The refusal" above introduces with two entries: `pickup-point-unavailable`.
+The handler test this ADR names
+`TestOnlyTheDestinationRefusalIsMarkedNotToBeStored` is now
+`TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored`.

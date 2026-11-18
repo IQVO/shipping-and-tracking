@@ -179,3 +179,7 @@ func (f *fakePointNoter) Execute(_ context.Context, cmd usecases.NotePointCmd) e
 	f.cmds = append(f.cmds, cmd)
 	return nil
 }
+
+func (f *fakePointNoter) ExecuteStatus(context.Context, usecases.NotePointStatusCmd) error {
+	return nil
+}
