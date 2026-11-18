@@ -132,7 +132,7 @@ Every applied scan raises `PackageScanned` with the new `state`.
 | Scans apply in time order; an older one is stored but does not move the state | `journey.ErrScanOutOfOrder` |
 | `DELIVERED`, `RETURNED`, `LOST` and `VOIDED` are terminal | `journey.ErrJourneyClosed` |
 | Only the edges of `next` exist (forward only); a scan with no edge from the current state is stored unapplied | `shared.ErrIllegalTransition` |
-| A label can be voided only while the journey is `LABELLED` | `journey.ErrVoidAfterHandover` |
+| A label can be voided only while the journey is `LABELLED` (an open journey past it: `ErrVoidAfterHandover`; a closed one: `ErrJourneyClosed`, checked first) | `journey.ErrVoidAfterHandover` |
 | Scan id 1 to 256 characters, node id 1 to 64, known scan type, `at` required | `ScanInput.validate` |
 | Concurrent writers: the stored version must be the aggregate's version minus one | `ports.ErrConcurrentUpdate` |
 
@@ -180,5 +180,7 @@ One `package_journeys` row plus its append-only `journey_scans` rows, every scan
 | Read model | Source events | Used for | Why it is not an aggregate |
 | --- | --- | --- | --- |
 | `catalog_dimensions` (`ports.CatalogDimensionsView`) | offer-availability `CatalogItemCreated` (`catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile`) | Item dimensions, weight and handling flags | It enforces no invariant and accepts no command: a local copy of another context's facts, rebuilt by replaying the topic. No use case of this repository reads it back yet |
+
+| `node_destinations` (`ports.NodeDestinationView`, ADR 0018) | node-topology `NodeRegistered`, every node type (`nodeId`, `postalCode`) | The destination prefix of a return label that names its destination by node (`IssueReturnLabel`) | It enforces no invariant and accepts no command: per node, the prefix this context derives from another context's fact (`shipto.NodePrefix`). No state, no delete; rebuilt by replaying the topic under a fresh consumer group |
 
 `GET /journeys/{trackingNumber}` reads the `PackageJourney` itself through `views.Journey`; it is a query, not a separate read model.

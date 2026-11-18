@@ -28,8 +28,12 @@ type LabelRepository interface {
 	// FindByPackage returns the label of (poNumber, packageNo), or ErrNotFound.
 	// It backs the ErrLabelAlreadyIssued pre-check.
 	FindByPackage(ctx context.Context, poNumber string, packageNo int) (*label.ShippingLabel, error)
+	// FindByReturnPackage returns the RETURN label of
+	// (returnAuthorizationId, packageNo), or ErrNotFound (ADR 0017).
+	FindByReturnPackage(ctx context.Context, returnAuthorizationID string, packageNo int) (*label.ShippingLabel, error)
 	// Save persists the label under the concurrency rule of the package
-	// comment. A second label for the same (poNumber, packageNo) is
+	// comment. A second label for the same (poNumber, packageNo), or for the
+	// same (returnAuthorizationId, packageNo) of a return, is
 	// label.ErrLabelAlreadyIssued and a second label with the same tracking
 	// number is label.ErrTrackingNumberTaken (unique indexes).
 	Save(ctx context.Context, l *label.ShippingLabel) error
@@ -72,24 +76,43 @@ type CatalogDimensionsView interface {
 	Get(ctx context.Context, catalogItemID string) (repository.CatalogDimensions, error)
 }
 
+// PickupPointView is the local read model of node-topology's pickup points
+// (ADR 0016). Two writes, and neither touches the other's columns: a
+// registration writes the descriptive data, a status fact writes the state.
+type PickupPointView interface {
+	// Register stores the descriptive data of a pickup point: its serving
+	// station and its prefix. A point the view does not hold is inserted in
+	// p.State; a point it holds keeps its own state, whatever it is, so a
+	// registration applied again never demotes it. A blank id is an error.
+	Register(ctx context.Context, p repository.PickupPoint) error
+	// SetState moves an existing point to state and changes nothing else. It
+	// reports whether a row changed: false for an id the view does not hold
+	// (no row is made of it) and for a RETIRED point (RETIRED is terminal).
+	SetState(ctx context.Context, id, state string) (bool, error)
+	// Get returns the point, or ErrNotFound.
+	Get(ctx context.Context, id string) (repository.PickupPoint, error)
+}
+
+// NodeDestinationView is the local read model of the destination prefix of
+// node-topology's nodes, every node type (ADR 0018). It has no state column
+// and no delete: a node's lifecycle is not this view's business.
+type NodeDestinationView interface {
+	// Upsert stores the row, replacing an earlier one of the same node. A
+	// blank NodeID is an error.
+	Upsert(ctx context.Context, n repository.NodeDestination) error
+	// Get returns the row of a node, or ErrNotFound.
+	Get(ctx context.Context, nodeID string) (repository.NodeDestination, error)
+}
+
 // AreaModeView is the local read model of node-topology's ServiceAreaAssigned
 // (ADR 0015): the delivery mode and declared carrier options of each postal
 // prefix, staleness-guarded by the assignment version.
-// PickupPointView is the local read model of node-topology's pickup points
-// (ADR 0016).
-type PickupPointView interface {
-	// Upsert stores the row; a RETIRED point is deleted.
-	Upsert(ctx context.Context, p repository.PickupPoint) error
-	// Get returns the point, or ErrNotFound.
-	Get(ctx context.Context, id string) (repository.PickupPoint, error)
-	// Delete forgets a retired point.
-	Delete(ctx context.Context, id string) error
-}
-
 type AreaModeView interface {
 	// Apply stores the row when its assignment version is newer than the
-	// stored one; an equal or older version is acknowledged and dropped. It
-	// reports whether the row was stored.
+	// stored one; an older version is acknowledged and dropped, and so is an
+	// equal one unless the stored row has no delivery station and this one
+	// brings it (the backfill of ADR 0019). It reports whether the row was
+	// stored.
 	Apply(ctx context.Context, a repository.AreaMode) (bool, error)
 	// Get returns the row of a prefix, or ErrNotFound.
 	Get(ctx context.Context, postalPrefix string) (repository.AreaMode, error)

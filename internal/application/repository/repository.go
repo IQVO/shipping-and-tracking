@@ -71,14 +71,34 @@ const (
 	DeliveryModeCarrierHandoff DeliveryMode = "CARRIER_HANDOFF"
 )
 
+// The states of a pickup point: node-topology's node lifecycle as the
+// PickupPointView keeps it (ADR 0016). RETIRED is terminal.
+const (
+	PickupPointProposed  = "PROPOSED"
+	PickupPointActive    = "ACTIVE"
+	PickupPointSuspended = "SUSPENDED"
+	PickupPointRetired   = "RETIRED"
+)
+
 // PickupPoint is one row of the PickupPointView read model: node-topology's
 // PICKUP_POINT nodes folded locally (ADR 0016). PostalPrefix is the point's
-// own labellable postal code.
+// own labellable postal code. StationNodeID and PostalPrefix are the
+// descriptive data a registration writes; State is what a status fact writes.
 type PickupPoint struct {
 	ID            string
 	StationNodeID string
 	PostalPrefix  string
 	State         string
+}
+
+// NodeDestination is one row of the NodeDestinationView read model (ADR 0018):
+// what a label needs about a node of node-topology, whatever its type - its id
+// and the destination prefix this context derived from the node's registered
+// postal code (shipto.NodePrefix). The postal code itself is not kept. An
+// empty PostalPrefix means the node is known and its code left nothing usable.
+type NodeDestination struct {
+	NodeID       string
+	PostalPrefix string
 }
 
 // AreaMode is one row of the AreaModeView read model: node-topology's
@@ -89,4 +109,8 @@ type AreaMode struct {
 	DeliveryMode DeliveryMode
 	Carriers     []journey.CarrierOption
 	Version      int64
+	// DeliveryStationNodeID is the delivery station serving the prefix, as
+	// ServiceAreaAssigned carried it (ADR 0019). Empty when the event named
+	// none or the row predates ADR 0019 (stored as NULL).
+	DeliveryStationNodeID string
 }

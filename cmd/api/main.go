@@ -152,15 +152,16 @@ func buildDeps(pool *pgxpool.Pool, cfg config) usecases.Deps {
 		Catalog: postgres.NewCatalogRepo(pool), Inbox: postgres.NewProcessedEventRepo(pool),
 		Outbox: postgres.NewOutbox(postgres.NewOutboxRepo(pool), outboundkafka.NewEncoder()), UoW: postgres.NewUnitOfWork(pool),
 		Clock: clock.System{}, IDs: ids.Random{}, ShipTo: cfg.shipTo, Sealer: cfg.sealer, StopKeys: cfg.stopKeys,
-		AreaModes:      postgres.NewAreaModeRepo(pool),
-		PickupPoints:   postgres.NewPickupPointRepo(pool),
-		PickupHoldDays: cfg.pickupHoldDays,
+		AreaModes:        postgres.NewAreaModeRepo(pool),
+		PickupPoints:     postgres.NewPickupPointRepo(pool),
+		PickupHoldDays:   cfg.pickupHoldDays,
+		NodeDestinations: postgres.NewNodeDestinationRepo(pool),
 	}
 }
 
 func buildServer(d usecases.Deps, pool *pgxpool.Pool, readiness *inboundhttp.Readiness) *inboundhttp.Server {
 	return &inboundhttp.Server{
-		IssueLabel: usecases.NewIssueLabel(d), VoidLabel: usecases.NewVoidLabel(d),
+		IssueLabel: usecases.NewIssueLabel(d), IssueReturnLabel: usecases.NewIssueReturnLabel(d), VoidLabel: usecases.NewVoidLabel(d),
 		RecordScan: usecases.NewRecordScan(d), ReportCarrierEvent: usecases.NewReportCarrierEvent(d),
 		GetJourney: usecases.NewGetJourney(d),
 		Idempotency: func(route string) func(http.Handler) http.Handler {
@@ -203,7 +204,7 @@ func startConsumers(d usecases.Deps, cfg config, logger *slog.Logger) ([]*worker
 		inboundkafka.NewLinehaulConsumer(cfg.brokers, cfg.groups[envLinehaulGroup], applyScans, logger),
 		inboundkafka.NewLastMileConsumer(cfg.brokers, cfg.groups[envLastMileGroup], applyScans, usecases.NewReturnToSender(d), usecases.NewApplyEtaWindows(d), usecases.NewRelayDeliveryPointFlag(d), logger),
 		inboundkafka.NewCatalogConsumer(cfg.brokers, cfg.groups[envCatalogGroup], usecases.NewRecordCatalogItem(d), logger),
-		inboundkafka.NewNodeTopologyConsumer(cfg.brokers, cfg.groups[envNodeTopicGroup], usecases.NewApplyAreaAssignment(d), usecases.NewNotePickupPoint(d), logger),
+		inboundkafka.NewNodeTopologyConsumer(cfg.brokers, cfg.groups[envNodeTopicGroup], usecases.NewApplyAreaAssignment(d), usecases.NewNotePickupPoint(d), usecases.NewNoteNodeDestination(d), logger),
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	var ws []*worker

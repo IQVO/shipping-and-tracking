@@ -23,6 +23,8 @@ func TestPostgresPassesTheRepositoryContract(t *testing.T) {
 		return repocontract.Fixture{
 			Labels: postgres.NewLabelRepo(pool), Snapshots: postgres.NewSnapshotRepo(pool), Journeys: postgres.NewJourneyRepo(pool),
 			Catalog: postgres.NewCatalogRepo(pool), Inbox: postgres.NewProcessedEventRepo(pool),
+			NodeDestinations: postgres.NewNodeDestinationRepo(pool), PickupPoints: postgres.NewPickupPointRepo(pool),
+			Areas:  postgres.NewAreaModeRepo(pool),
 			Outbox: postgres.NewOutbox(postgres.NewOutboxRepo(pool), kafka.NewEncoder()), UoW: postgres.NewUnitOfWork(pool),
 			OutboxCount: func(ctx context.Context) (int, error) {
 				var n int
@@ -49,8 +51,8 @@ func TestMigrationsGoUpDownUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	want := []string{"area_modes", "catalog_dimensions", "idempotency_keys", "journey_scans", "outbox_events", "package_journeys",
-		"pickup_points", "processed_events", "ship_to_snapshots", "shipping_labels"}
+	want := []string{"area_modes", "catalog_dimensions", "idempotency_keys", "journey_scans", "node_destinations", "outbox_events",
+		"package_journeys", "pickup_points", "processed_events", "ship_to_snapshots", "shipping_labels"}
 	rows, err := pool.Query(context.Background(),
 		`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> 'schema_migrations' ORDER BY table_name`)
 	if err != nil {

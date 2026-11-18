@@ -118,6 +118,7 @@ The OLTP Postgres database, created by the embedded migrations `0001_schema` and
 | `package_journeys` | The `PackageJourney` aggregate with its optimistic `version`; partial indexes for the silence sweep and the ship-to purge |
 | `journey_scans` | The append-only `Scan` entities (`seq`, unique `(tracking_number, scan_id)`) |
 | `catalog_dimensions` | Local read model fed by `CatalogItemCreated` |
+| `node_destinations` | Local read model fed by node-topology's `NodeRegistered` (migration `0008`, ADR 0018): per node, the destination prefix a return label carries when its destination is named by node |
 | `outbox_events` | The transactional outbox, one already-encoded CloudEvents message per row, unique `(event_id, topic)` |
 | `processed_events` | The inbox: `(consumer, event_id)` claims that make the consumers idempotent |
 | `idempotency_keys` | Stored answers of the three POST routes, key `key` (global), 24 h retention |

@@ -32,7 +32,7 @@ CloudEvents `type`, deduplicated on the CloudEvents `id` in `processed_events` (
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned` (ADR 0013) | `trackingNumbers[]`, `etaStart`, `etaEnd`; the CloudEvents `time` is the `assignedAt` | `AssignEta` per tracking number (the day-of ETA window; not a scan) |
 | last-mile-delivery | `com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged` (ADR 0014) | `trackingNumbers[]`, `reason`, `flaggedAt`; `stopKey` and `failures` dropped | `RelayDeliveryPointFlag` per tracking number (the delivery-point flag; not a scan) |
 | offer-availability (Conformist) | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | `catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile` | upsert `catalog_dimensions` |
-| node-topology (Conformist) | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | `postalPrefix`, `assignmentVersion`, `deliveryMode`, `carriers[]` (`carrierId`, `handoffNodeId`, `costPerPackageCents`, `transitMinutes`); `deliveryStationNodeId` and `regionId` read and dropped; absent `deliveryMode`/`carriers` = `NETWORK_ROUTE`, no options | upsert `area_modes` under the assignment-version guard |
+| node-topology (Conformist) | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | `postalPrefix`, `assignmentVersion`, `deliveryMode`, `carriers[]` (`carrierId`, `handoffNodeId`, `costPerPackageCents`, `transitMinutes`), `deliveryStationNodeId` (kept, ADR 0019); `regionId` read and dropped; absent `deliveryMode`/`carriers` = `NETWORK_ROUTE`, no options | upsert `area_modes` under the assignment-version guard (an equal version also fills a missing station, ADR 0019) |
 
 The entity segment of `PackageReturnInitiated` is `packageattempthistory` in last-mile-delivery's pushed
 AsyncAPI; the `route` spelling is kept as a tolerated alias. Types not in the table are
@@ -54,7 +54,9 @@ acknowledged and ignored.
 `CatalogDimensionsView` (`catalog_dimensions`) accepts no command and enforces no invariant (ADR 0002 A18).
 `AreaModeView` (`area_modes`, ADR 0015) is the second read model: one row per postal prefix with the area's
 delivery mode and declared carrier options, upserted only when the event's `assignmentVersion` is strictly newer
-than the stored one (the same guard delivery-promise uses).
+than the stored one (the same guard delivery-promise uses). Since ADR 0019 the row also holds the area's delivery
+station (`delivery_station_node_id`, published as `destinationStationNodeId` on `LabelIssued`), and an event of the
+SAME version still writes when it brings a station the stored row lacks.
 
 ### Synchronous call
 
@@ -86,3 +88,13 @@ The node-topology consumer also handles the node lifecycle events `NodeRegistere
 `NodeTopologyHandlers`, ADR 0016). They maintain the pickup-point read model and are not rows of the table
 above, so "types not in the table are acknowledged and ignored" no longer holds for them. With them the
 contract (`apis/asyncapi.yaml`) lists 14 consumed types from five topics.
+
+## Addendum 2026-11-18: the node destination view (ADR 0018)
+
+`com.retailnetwork.logistics.node-topology.node.NodeRegistered` now also feeds a third read model of
+node-topology's facts, `NodeDestinationView` (`node_destinations`): one row per node of ANY type, holding the
+destination prefix this context derives from the registered `postalCode` (fields relied on: `nodeId`,
+`postalCode`; the postal code itself is not kept). It is folded in the same consumer group
+(`ST_AREAS_CONSUMER_GROUP`) but under its own inbox identity, `node-topology.node-destinations`, so a
+replay of the topic fills it while the older folds skip what they already claimed. `NodeActivated`,
+`NodeSuspended` and `NodeRetired` do not reach it. No new consumed type, topic or consumer group.

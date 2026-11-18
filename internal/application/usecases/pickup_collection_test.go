@@ -22,7 +22,7 @@ func pickupRig(t *testing.T) *rig {
 // putPickupPoint stores a point in the local view.
 func putPickupPoint(t *testing.T, r *rig, id, state string) {
 	t.Helper()
-	if err := r.deps.PickupPoints.Upsert(context.Background(), repository.PickupPoint{
+	if err := r.deps.PickupPoints.Register(context.Background(), repository.PickupPoint{
 		ID: id, StationNodeID: "node-ds-07", PostalPrefix: "07095", State: state,
 	}); err != nil {
 		t.Fatalf("seed point: %v", err)

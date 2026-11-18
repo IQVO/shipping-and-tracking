@@ -46,6 +46,74 @@ func TestLabelViewIssuedAndVoidedJSON(t *testing.T) {
 	}
 }
 
+func newReturnLabel(t *testing.T) *label.ShippingLabel {
+	t.Helper()
+	l, _, err := label.Issue(label.NewLabel{
+		Ref: "lbl-ret-1", TrackingNumber: "RNRET1", PackageNo: 1, OrderID: "ord-1",
+		Purpose: label.PurposeReturn, ReturnAuthorizationID: "ret-1",
+		Tier: shared.TierStandard, StopKey: strings.Repeat("a", label.StopKeyLen), DestinationPostalPrefix: "01310",
+	}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
+// The forward label contract pins poNumber and assignmentId as required
+// (apis/openapi.yaml, Label): the view type cannot omit them, whatever it holds.
+func TestLabelViewAlwaysCarriesPONumberAndAssignmentID(t *testing.T) {
+	b, _ := json.Marshal(views.Label{})
+	for _, key := range []string{`"poNumber":""`, `"assignmentId":""`} {
+		if !strings.Contains(string(b), key) {
+			t.Fatalf("an outbound label view must always carry %s: %s", key, b)
+		}
+	}
+	for _, key := range []string{"purpose", "returnAuthorizationId"} {
+		if strings.Contains(string(b), key) {
+			t.Fatalf("an outbound label view never carries %s: %s", key, b)
+		}
+	}
+}
+
+// A reverse label has its own schema (apis/openapi.yaml, ReturnLabel): never a
+// poNumber or an assignmentId, always purpose RETURN and the authorization.
+func TestReturnLabelViewIssuedAndVoidedJSON(t *testing.T) {
+	l := newReturnLabel(t)
+	b, _ := json.Marshal(views.ReturnLabelFrom(l))
+	want := `{"labelRef":"lbl-ret-1","trackingNumber":"RNRET1","carrier":"RN-GROUND","packageNo":1,"orderId":"ord-1","tier":"STANDARD","status":"ISSUED","issuedAt":"2026-10-23T08:00:00Z","purpose":"RETURN","returnAuthorizationId":"ret-1"}`
+	if string(b) != want {
+		t.Fatalf("issued JSON:\n%s\nwant\n%s", b, want)
+	}
+	if _, err := l.Void("never shipped", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = json.Marshal(views.ReturnLabelFrom(l))
+	want = `{"labelRef":"lbl-ret-1","trackingNumber":"RNRET1","carrier":"RN-GROUND","packageNo":1,"orderId":"ord-1","tier":"STANDARD","status":"VOIDED","issuedAt":"2026-10-23T08:00:00Z","voidReason":"never shipped","voidedAt":"2026-10-23T09:00:00Z","purpose":"RETURN","returnAuthorizationId":"ret-1"}`
+	if string(b) != want {
+		t.Fatalf("voided JSON:\n%s\nwant\n%s", b, want)
+	}
+	// Even an empty view cannot grow the outbound-only keys.
+	b, _ = json.Marshal(views.ReturnLabel{})
+	for _, key := range []string{"poNumber", "assignmentId", "stopKey"} {
+		if strings.Contains(string(b), key) {
+			t.Fatalf("a reverse label view never carries %s: %s", key, b)
+		}
+	}
+}
+
+// A route that serves either kind (the void route) answers the view of the
+// label's purpose: the oneOf of apis/openapi.yaml.
+func TestAnyLabelFromPicksTheViewOfThePurpose(t *testing.T) {
+	out, ok := views.AnyLabelFrom(newLabel(t)).(views.Label)
+	if !ok || out.PONumber != "PO-1" || out.AssignmentID != "asg-1" {
+		t.Fatalf("an outbound label answers views.Label, got %#v", views.AnyLabelFrom(newLabel(t)))
+	}
+	rev, ok := views.AnyLabelFrom(newReturnLabel(t)).(views.ReturnLabel)
+	if !ok || rev.Purpose != "RETURN" || rev.ReturnAuthorizationID != "ret-1" {
+		t.Fatalf("a reverse label answers views.ReturnLabel, got %#v", views.AnyLabelFrom(newReturnLabel(t)))
+	}
+}
+
 func TestJourneyViewJSONOpenAndDelivered(t *testing.T) {
 	j, err := journey.Start(journey.NewJourney{TrackingNumber: "RN1", LabelRef: "lbl-1", PONumber: "PO-1", AssignmentID: "asg-1", OrderID: "ord-1", Tier: shared.TierTwoDay}, t0)
 	if err != nil {

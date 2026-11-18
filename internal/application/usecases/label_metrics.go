@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/claudioed/shipping-and-tracking/internal/application/ports"
+	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
@@ -17,7 +18,9 @@ var rejectionReasons = []struct {
 }{
 	{shared.ErrValidation, "validation-failed"},
 	{ports.ErrShipToUnavailable, "ship-to-unavailable"},
+	{shipto.ErrPickupPointUnavailable, "pickup-point-unavailable"},
 	{label.ErrLabelAlreadyIssued, "label-already-issued"},
+	{shipto.ErrDestinationPrefixUnavailable, "destination-prefix-unavailable"},
 	{label.ErrTrackingNumberTaken, "tracking-number-taken"},
 	{ports.ErrConcurrentUpdate, "concurrent-update"},
 }
@@ -26,14 +29,14 @@ var rejectionReasons = []struct {
 // caller can act on (a database error, a bug).
 const internalErrorReason = "internal-error"
 
-// recordOutcome counts one label-issue attempt: issued when err is nil, else
-// rejected with the reason of err.
-func (u *IssueLabel) recordOutcome(ctx context.Context, err error) {
+// recordOutcome counts one label-issue attempt (outbound or return): issued
+// when err is nil, else rejected with the reason of err.
+func (w writer) recordOutcome(ctx context.Context, err error) {
 	if err == nil {
-		u.metrics().LabelIssued(ctx)
+		w.metrics().LabelIssued(ctx)
 		return
 	}
-	u.metrics().LabelRejected(ctx, rejectionReason(err))
+	w.metrics().LabelRejected(ctx, rejectionReason(err))
 }
 
 func rejectionReason(err error) string {

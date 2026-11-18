@@ -1,5 +1,5 @@
 // Package views holds the read DTOs the use cases return: one per schema of
-// apis/openapi.yaml (Label, Journey, Scan). The JSON tags are the REST wire
+// apis/openapi.yaml (Label, ReturnLabel, Journey, Scan). The JSON tags are the REST wire
 // names, so the HTTP adapter marshals them as they are. A view is a copy;
 // nothing in it aliases an aggregate. No view has an address field: the
 // ship-to never leaves the encrypted snapshot (ADR 0002 A9).
@@ -12,7 +12,9 @@ import (
 	"github.com/claudioed/shipping-and-tracking/internal/domain/label"
 )
 
-// Label is the label metadata.
+// Label is the metadata of an outbound label (schema Label). poNumber and
+// assignmentId are required by the contract consumers pin, so they are always
+// written; a reverse label is never a Label (see ReturnLabel).
 type Label struct {
 	LabelRef       string     `json:"labelRef"`
 	TrackingNumber string     `json:"trackingNumber"`
@@ -28,18 +30,66 @@ type Label struct {
 	VoidedAt       *time.Time `json:"voidedAt,omitempty"`
 }
 
-// LabelFrom copies a label into its view.
+// LabelFrom copies an outbound label into its view.
 func LabelFrom(l *label.ShippingLabel) Label {
-	v := Label{
+	return Label{
 		LabelRef: string(l.Ref()), TrackingNumber: string(l.TrackingNumber()), Carrier: l.Carrier(), PONumber: l.PONumber(),
 		PackageNo: l.PackageNo(), AssignmentID: l.AssignmentID(), OrderID: l.OrderID(), Tier: string(l.Tier()),
-		Status: string(l.Status()), IssuedAt: l.IssuedAt(), VoidReason: l.VoidReason(),
+		Status: string(l.Status()), IssuedAt: l.IssuedAt(), VoidReason: l.VoidReason(), VoidedAt: voidedAt(l),
 	}
-	if !l.VoidedAt().IsZero() {
-		at := l.VoidedAt()
-		v.VoidedAt = &at
+}
+
+// ReturnLabel is the metadata of a reverse label (schema ReturnLabel, ADR
+// 0017): no purchase order and no assignment, always the purpose and the
+// return authorization.
+type ReturnLabel struct {
+	LabelRef              string     `json:"labelRef"`
+	TrackingNumber        string     `json:"trackingNumber"`
+	Carrier               string     `json:"carrier"`
+	PackageNo             int        `json:"packageNo"`
+	OrderID               string     `json:"orderId"`
+	Tier                  string     `json:"tier"`
+	Status                string     `json:"status"`
+	IssuedAt              time.Time  `json:"issuedAt"`
+	VoidReason            string     `json:"voidReason,omitempty"`
+	VoidedAt              *time.Time `json:"voidedAt,omitempty"`
+	Purpose               string     `json:"purpose"`
+	ReturnAuthorizationID string     `json:"returnAuthorizationId"`
+}
+
+// ReturnLabelFrom copies a reverse label into its view.
+func ReturnLabelFrom(l *label.ShippingLabel) ReturnLabel {
+	return ReturnLabel{
+		LabelRef: string(l.Ref()), TrackingNumber: string(l.TrackingNumber()), Carrier: l.Carrier(),
+		PackageNo: l.PackageNo(), OrderID: l.OrderID(), Tier: string(l.Tier()),
+		Status: string(l.Status()), IssuedAt: l.IssuedAt(), VoidReason: l.VoidReason(), VoidedAt: voidedAt(l),
+		Purpose: string(l.Purpose()), ReturnAuthorizationID: l.ReturnAuthorizationID(),
 	}
-	return v
+}
+
+// AnyLabel is the answer of a route that serves either kind (the void route):
+// a Label or a ReturnLabel, the oneOf of apis/openapi.yaml. Nothing else
+// implements it.
+type AnyLabel interface{ anyLabel() }
+
+func (Label) anyLabel()       {}
+func (ReturnLabel) anyLabel() {}
+
+// AnyLabelFrom copies a label into the view of its purpose.
+func AnyLabelFrom(l *label.ShippingLabel) AnyLabel {
+	if l.Purpose() == label.PurposeReturn {
+		return ReturnLabelFrom(l)
+	}
+	return LabelFrom(l)
+}
+
+// voidedAt is the void instant of a voided label, nil while it is issued.
+func voidedAt(l *label.ShippingLabel) *time.Time {
+	if l.VoidedAt().IsZero() {
+		return nil
+	}
+	at := l.VoidedAt()
+	return &at
 }
 
 // Scan is one stored scan of a journey.

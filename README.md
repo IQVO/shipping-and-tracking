@@ -150,7 +150,8 @@ Logs, metrics and traces follow the fleet standard ([ADR 0008](docs/adr/0008-fle
 
 REST contract: [`apis/openapi.yaml`](apis/openapi.yaml). Every POST takes `Idempotency-Key` (1-128 printable ASCII characters; a replay returns the first answer with `Idempotency-Replayed: true`, the same key with another method, path or body is `409 idempotency-key-reused`); errors are RFC 9457 problem details, shared problem types `not-found` (404), `illegal-transition` (409), `concurrent-update` (409) and `validation-failed` (422), plus one slug per model `Err` name.
 
-- `POST /labels` issues the label of one package, reads the synthetic ship-to from customer-ordering, stores it only as an AES-256-GCM snapshot (purged 30 days after the journey closes), starts the journey and publishes `LabelIssued` with an opaque `stopKey` and a 5-character postal prefix. No response, event or log carries the address.
+- `POST /labels` issues the label of one package, reads the synthetic ship-to from customer-ordering, stores it only as an AES-256-GCM snapshot (purged 30 days after the journey closes), starts the journey and publishes `LabelIssued` with an opaque `stopKey`, a 5-character postal prefix and, when the local area view knows the delivery station of that prefix, the optional `destinationStationNodeId` (ADR 0019; a node id, omitted when unknown). No response, event or log carries the address.
+- `POST /return-labels` issues the reverse label of one package of a customer return (ADR 0017): same `stopKey` as the outbound label of the order, ground carrier, no journey, no snapshot. The return destination is named by `destinationNodeId`, and this context derives the label's postal prefix from its own event-fed view of node-topology's nodes (ADR 0018); the deprecated `destinationPostalPrefix` is still accepted, exactly one of the two must be sent. A node without a usable prefix here answers `409 destination-prefix-unavailable`.
 - `POST /labels/{labelRef}/voids` voids a label before the package is handed over.
 - `GET /journeys/{trackingNumber}` returns the timeline.
 - `POST /journeys/{trackingNumber}/scans` records a scan.
@@ -204,7 +205,7 @@ CI (`.github/workflows/ci.yml`) runs `lint`, `guide-lint`, `complexity`, `test`,
 
 ## Architecture Decision Records
 
-[docs/adr/](docs/adr/index.md) — index plus 16 ADRs (0001–0016: bounded context, aggregates and invariants, consumed contracts and local read models, CloudEvents envelope and type catalogue, runtime configuration/jobs and retention, MCP server adoption, console remote, fleet observability standard, A2A inbound adapter, fleet REST API guideline, label-time address deliverability check, analytics read side, day-of ETA window on the journey, delivery-point flag relayed by order id, carrier handoff and carrier-events webhook, pickup collection).
+[docs/adr/](docs/adr/index.md) — index plus 18 ADRs (0001–0018: bounded context, aggregates and invariants, consumed contracts and local read models, CloudEvents envelope and type catalogue, runtime configuration/jobs and retention, MCP server adoption, console remote, fleet observability standard, A2A inbound adapter, fleet REST API guideline, label-time address deliverability check, analytics read side, day-of ETA window on the journey, delivery-point flag relayed by order id, carrier handoff and carrier-events webhook, pickup collection, reverse return labels, the return destination prefix derived from the destination node).
 
 ## License
 

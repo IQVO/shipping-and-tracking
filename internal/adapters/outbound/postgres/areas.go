@@ -60,20 +60,24 @@ func NewAreaModeRepo(pool *pgxpool.Pool) *AreaModeRepo { return &AreaModeRepo{po
 var _ ports.AreaModeView = (*AreaModeRepo)(nil)
 
 // Apply implements ports.AreaModeView: the assignment-version guard keeps an
-// older event from overwriting a newer row.
+// older event from overwriting a newer row. An event of the SAME version still
+// writes when it brings a station the stored row lacks (NULL): the backfill of
+// ADR 0019. A stored station is never replaced by an equal version.
 func (r *AreaModeRepo) Apply(ctx context.Context, a repository.AreaMode) (bool, error) {
 	opts, err := optionsToJSON(a.Carriers)
 	if err != nil {
 		return false, err
 	}
 	tag, err := queryFor(ctx, r.pool).Exec(ctx, `
-		INSERT INTO area_modes (postal_prefix, delivery_mode, carrier_options, assignment_version)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO area_modes (postal_prefix, delivery_mode, carrier_options, assignment_version, delivery_station_node_id)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (postal_prefix) DO UPDATE SET delivery_mode = EXCLUDED.delivery_mode,
 			carrier_options = EXCLUDED.carrier_options, assignment_version = EXCLUDED.assignment_version,
-			updated_at = now()
-		WHERE EXCLUDED.assignment_version > area_modes.assignment_version`,
-		a.PostalPrefix, string(a.DeliveryMode), opts, a.Version)
+			delivery_station_node_id = EXCLUDED.delivery_station_node_id, updated_at = now()
+		WHERE EXCLUDED.assignment_version > area_modes.assignment_version
+		   OR (EXCLUDED.assignment_version = area_modes.assignment_version
+		       AND area_modes.delivery_station_node_id IS NULL AND EXCLUDED.delivery_station_node_id IS NOT NULL)`,
+		a.PostalPrefix, string(a.DeliveryMode), opts, a.Version, nullString(a.DeliveryStationNodeID))
 	if err != nil {
 		return false, err
 	}
@@ -86,10 +90,11 @@ func (r *AreaModeRepo) Get(ctx context.Context, postalPrefix string) (repository
 		mode    string
 		opts    []byte
 		version int64
+		station *string
 	)
 	err := queryFor(ctx, r.pool).QueryRow(ctx,
-		`SELECT delivery_mode, carrier_options, assignment_version FROM area_modes WHERE postal_prefix = $1`, postalPrefix).
-		Scan(&mode, &opts, &version)
+		`SELECT delivery_mode, carrier_options, assignment_version, delivery_station_node_id FROM area_modes WHERE postal_prefix = $1`, postalPrefix).
+		Scan(&mode, &opts, &version, &station)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return repository.AreaMode{}, fmt.Errorf("%w: service area %s", ports.ErrNotFound, postalPrefix)
 	}
@@ -101,5 +106,5 @@ func (r *AreaModeRepo) Get(ctx context.Context, postalPrefix string) (repository
 		return repository.AreaMode{}, err
 	}
 	return repository.AreaMode{PostalPrefix: postalPrefix, DeliveryMode: repository.DeliveryMode(mode),
-		Carriers: carriers, Version: version}, nil
+		Carriers: carriers, Version: version, DeliveryStationNodeID: deref(station)}, nil
 }

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -23,6 +24,44 @@ type issueLabelRequest struct {
 
 type voidLabelRequest struct {
 	Reason *string `json:"reason"`
+}
+
+// issueReturnLabelRequest is the body of POST /return-labels (ADR 0017). The
+// return destination is named by exactly one of destinationNodeId and the
+// deprecated destinationPostalPrefix (ADR 0018); the use case enforces the
+// "exactly one", this adapter the bounds of whichever was sent.
+type issueReturnLabelRequest struct {
+	ReturnAuthorizationID   *string      `json:"returnAuthorizationId"`
+	OrderID                 *string      `json:"orderId"`
+	PackageNo               *int         `json:"packageNo"`
+	DestinationNodeID       optionalText `json:"destinationNodeId"`
+	DestinationPostalPrefix optionalText `json:"destinationPostalPrefix"`
+}
+
+// optionalText is a JSON string property that may be absent. It tells an
+// absent property from an explicit null: the schema types the property as a
+// string, so a null is refused like any other non-string, never read as absent.
+type optionalText struct {
+	sent  bool
+	value *string
+}
+
+// UnmarshalJSON records that the property was sent, null included.
+func (o *optionalText) UnmarshalJSON(b []byte) error {
+	o.sent = true
+	return json.Unmarshal(b, &o.value)
+}
+
+// bounded answers "" for an absent property, else the value checked against
+// 1..max characters.
+func (o optionalText) bounded(name string, max int) (string, error) {
+	if !o.sent {
+		return "", nil
+	}
+	if o.value == nil {
+		return "", validationError("%s must be a string, not null", name)
+	}
+	return text(name, o.value, max)
 }
 
 type recordScanRequest struct {
@@ -100,6 +139,47 @@ func (q issueLabelRequest) command() (usecases.IssueLabelCmd, error) {
 	}
 	cmd.PackageNo = *q.PackageNo
 	return cmd, nil
+}
+
+func (q issueReturnLabelRequest) command() (usecases.IssueReturnLabelCmd, error) {
+	var cmd usecases.IssueReturnLabelCmd
+	var err error
+	if cmd.ReturnAuthorizationID, err = text("returnAuthorizationId", q.ReturnAuthorizationID, maxFieldLen); err != nil {
+		return cmd, err
+	}
+	if cmd.OrderID, err = text("orderId", q.OrderID, maxFieldLen); err != nil {
+		return cmd, err
+	}
+	if cmd.DestinationNodeID, err = q.DestinationNodeID.bounded("destinationNodeId", maxFieldLen); err != nil {
+		return cmd, err
+	}
+	if cmd.DestinationPostalPrefix, err = q.DestinationPostalPrefix.bounded("destinationPostalPrefix", label.MaxPostalPrefix); err != nil {
+		return cmd, err
+	}
+	if q.PackageNo == nil || *q.PackageNo < 1 || *q.PackageNo > maxInt32 {
+		return cmd, validationError("packageNo must be between 1 and %d", maxInt32)
+	}
+	cmd.PackageNo = *q.PackageNo
+	return cmd, nil
+}
+
+func (s *Server) handleIssueReturnLabel(w http.ResponseWriter, r *http.Request) {
+	var req issueReturnLabelRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	cmd, err := req.command()
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	v, err := s.IssueReturnLabel.Execute(r.Context(), cmd)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, v)
 }
 
 func (s *Server) handleVoidLabel(w http.ResponseWriter, r *http.Request) {

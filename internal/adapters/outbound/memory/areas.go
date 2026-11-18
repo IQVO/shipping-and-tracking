@@ -12,10 +12,12 @@ import (
 type AreaModeView struct{ s *Store }
 
 // Apply implements ports.AreaModeView: an assignment version strictly newer
-// than the stored one replaces the row; an equal or older one is dropped.
+// than the stored one replaces the row; an older one is dropped; an equal one
+// is dropped too, except that it fills a station the stored row lacks (ADR
+// 0019: the backfill of rows stored before the station was kept).
 func (r *AreaModeView) Apply(ctx context.Context, a repository.AreaMode) (bool, error) {
 	defer r.s.enter(ctx)()
-	if stored, ok := r.s.st.areas[a.PostalPrefix]; ok && a.Version <= stored.Version {
+	if stored, ok := r.s.st.areas[a.PostalPrefix]; ok && !supersedes(a, stored) {
 		return false, nil
 	}
 	r.s.st.areas[a.PostalPrefix] = a
@@ -30,4 +32,12 @@ func (r *AreaModeView) Get(ctx context.Context, postalPrefix string) (repository
 		return repository.AreaMode{}, fmt.Errorf("%w: service area %s", ports.ErrNotFound, postalPrefix)
 	}
 	return a, nil
+}
+
+// supersedes is the version guard of ports.AreaModeView.Apply.
+func supersedes(a, stored repository.AreaMode) bool {
+	if a.Version != stored.Version {
+		return a.Version > stored.Version
+	}
+	return stored.DeliveryStationNodeID == "" && a.DeliveryStationNodeID != ""
 }

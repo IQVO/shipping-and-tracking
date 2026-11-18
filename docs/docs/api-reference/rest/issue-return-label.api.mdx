@@ -1,0 +1,70 @@
+---
+id: issue-return-label
+title: "Issue the reverse label of one package of a return (IssueReturnLabel)"
+description: "In-org route called by customer-returns (ADR 0017, ADR 0018), the reverse twin of POST /labels. Reads the ship-to of orderId from customer-ordering BEFORE the transaction opens and derives the stopKey exactly like the outbound label of the same order (same secret over the same normalized address), so a return pickup stop groups with the outbound delivery stop by construction. The RETURN DESTINATION is named in exactly one of two ways. destinationNodeId names the returns node, and this context derives the label's destination prefix itself, from its own view of node-topology's registered nodes (ADR 0018): the caller holds no address data. destinationPostalPrefix, deprecated, is a prefix the caller supplies. Sending both, or neither, is validation-failed. A destinationNodeId this context holds no usable prefix for (the node's registration has not been consumed yet, or its registered postal code has no letter or digit from A-Z 0-9) is refused with 409 destination-prefix-unavailable and no label is stored, nor is the refusal kept under the Idempotency-Key, so the same request with the same key is executed again and served once the node is known; this context does not judge whether the node is the right one or whether it is active. The label rides the ground carrier (RN-GROUND), starts NO package journey and seals NO ship-to snapshot; scans of the reverse package are counted-and-acknowledged unknowns, and shopper-facing return tracking is customer-returns' authorization view. The response is a ReturnLabel: no poNumber, no assignmentId, purpose RETURN and the returnAuthorizationId. One label per (returnAuthorizationId, packageNo). A replay of the same Idempotency-Key returns the first response."
+sidebar_label: "Issue the reverse label of one package of a return (IssueReturnLabel)"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "post api-method"
+info_path: docs/api-reference/rest/shipping-tracking-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Issue the reverse label of one package of a return (IssueReturnLabel)"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/return-labels"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+In-org route called by customer-returns (ADR 0017, ADR 0018), the reverse twin of POST /labels. Reads the ship-to of orderId from customer-ordering BEFORE the transaction opens and derives the stopKey exactly like the outbound label of the same order (same secret over the same normalized address), so a return pickup stop groups with the outbound delivery stop by construction. The RETURN DESTINATION is named in exactly one of two ways. destinationNodeId names the returns node, and this context derives the label's destination prefix itself, from its own view of node-topology's registered nodes (ADR 0018): the caller holds no address data. destinationPostalPrefix, deprecated, is a prefix the caller supplies. Sending both, or neither, is validation-failed. A destinationNodeId this context holds no usable prefix for (the node's registration has not been consumed yet, or its registered postal code has no letter or digit from A-Z 0-9) is refused with 409 destination-prefix-unavailable and no label is stored, nor is the refusal kept under the Idempotency-Key, so the same request with the same key is executed again and served once the node is known; this context does not judge whether the node is the right one or whether it is active. The label rides the ground carrier (RN-GROUND), starts NO package journey and seals NO ship-to snapshot; scans of the reverse package are counted-and-acknowledged unknowns, and shopper-facing return tracking is customer-returns' authorization view. The response is a ReturnLabel: no poNumber, no assignmentId, purpose RETURN and the returnAuthorizationId. One label per (returnAuthorizationId, packageNo). A replay of the same Idempotency-Key returns the first response.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./issue-return-label.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./issue-return-label.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./issue-return-label.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

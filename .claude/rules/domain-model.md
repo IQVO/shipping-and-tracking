@@ -16,7 +16,7 @@ are the numbered assumptions of `docs/adr/0002-aggregates-and-invariants.md` (A1
 
 ## Aggregates
 
-- **ShippingLabel** (`internal/domain/label`): issued once per package; `ISSUED` to `VOIDED` only; a void is idempotent and is refused once the package was handed over (that rule lives on the journey).
+- **ShippingLabel** (`internal/domain/label`): issued once per package; `ISSUED` to `VOIDED` only; a void is idempotent and is refused once the package was handed over (that rule lives on the journey). `Purpose` splits outbound labels (`OUTBOUND`, keyed (poNumber, packageNo) with an assignment) from reverse labels of customer returns (`RETURN`, keyed (returnAuthorizationId, packageNo), no purchase order, no assignment, ground carrier, no journey; ADR 0017).
 - **PackageJourney** (`internal/domain/journey`): states `LABELLED`, `HANDED_OVER`, `IN_TRANSIT`, `AT_STATION`, `OUT_FOR_DELIVERY`, then the end states `DELIVERED`, `RETURNED`, `LOST`, `VOIDED`. It only moves forward in time; an older scan or one with no edge is stored, not applied; a known `scanId` is ignored; an end state is final.
 - Shared kernel: `internal/domain/shared` (ids, `Tier`, `TrackingNumber`, the error sentinels). The domain is pure: clock and ids are arguments, `Snapshot`/`Restore`, optimistic `version`.
 

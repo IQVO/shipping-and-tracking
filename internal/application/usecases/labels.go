@@ -97,11 +97,17 @@ func (u *IssueLabel) issuePickup(ctx context.Context, cmd IssueLabelCmd, addr sh
 	if point.State != "ACTIVE" {
 		return views.Label{}, fmt.Errorf("%w: %s is %s", shipto.ErrPickupPointUnavailable, point.ID, point.State)
 	}
+	// The station is the area's station of the point's prefix, not the
+	// point's own serving station (ADR 0019, open question).
+	station, err := u.destinationStation(ctx, point.PostalPrefix)
+	if err != nil {
+		return views.Label{}, err
+	}
 	now := u.now()
 	in := label.NewLabel{
 		PONumber: cmd.PONumber, PackageNo: cmd.PackageNo, AssignmentID: cmd.AssignmentID, OrderID: cmd.OrderID,
 		Tier: cmd.Tier, StopKey: u.StopKeys.StopKey("pickup-point|" + point.ID), DestinationPostalPrefix: point.PostalPrefix,
-		PickupPointID: point.ID,
+		PickupPointID: point.ID, DestinationStationNodeID: station,
 	}
 	for attempt := 0; ; attempt++ {
 		v, err := transact(ctx, u.UoW, func(ctx context.Context) (views.Label, error) {
@@ -159,9 +165,15 @@ func (u *IssueLabel) issue(ctx context.Context, cmd IssueLabelCmd, addr shipto.A
 	if err != nil {
 		return views.Label{}, fmt.Errorf("seal ship-to: %w", err)
 	}
+	prefix := addr.PostalPrefix()
+	station, err := u.destinationStation(ctx, prefix)
+	if err != nil {
+		return views.Label{}, err
+	}
 	in := label.NewLabel{
 		PONumber: cmd.PONumber, PackageNo: cmd.PackageNo, AssignmentID: cmd.AssignmentID, OrderID: cmd.OrderID,
-		Tier: cmd.Tier, StopKey: u.StopKeys.StopKey(addr.Normalized()), DestinationPostalPrefix: addr.PostalPrefix(),
+		Tier: cmd.Tier, StopKey: u.StopKeys.StopKey(addr.Normalized()), DestinationPostalPrefix: prefix,
+		DestinationStationNodeID: station,
 	}
 	// One retry with a fresh tracking number answers a generator collision (ADR 0002 A2).
 	for attempt := 0; ; attempt++ {
@@ -212,38 +224,60 @@ type VoidLabel struct{ writer }
 func NewVoidLabel(d Deps) *VoidLabel { return &VoidLabel{writer{d}} }
 
 // Execute voids the label. A label that is already VOIDED is returned unchanged
-// and publishes nothing. Errors: ports.ErrNotFound, shared.ErrValidation,
+// and publishes nothing. A RETURN label has no journey to close (ADR 0017).
+// The view is the one of the label's kind: views.Label for an outbound label,
+// views.ReturnLabel for a reverse one.
+// Errors: ports.ErrNotFound, shared.ErrValidation,
 // journey.ErrVoidAfterHandover.
-func (u *VoidLabel) Execute(ctx context.Context, ref label.Ref, reason string) (views.Label, error) {
-	return transact(ctx, u.UoW, func(ctx context.Context) (views.Label, error) {
+func (u *VoidLabel) Execute(ctx context.Context, ref label.Ref, reason string) (views.AnyLabel, error) {
+	return transact(ctx, u.UoW, func(ctx context.Context) (views.AnyLabel, error) {
 		l, err := u.Labels.Get(ctx, ref)
 		if err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if l.Status() == label.StatusVoided {
-			return views.LabelFrom(l), nil
+			return views.AnyLabelFrom(l), nil
+		}
+		now := u.now()
+		if l.Purpose() == label.PurposeReturn {
+			return u.voidReturn(ctx, l, reason, now)
 		}
 		j, err := u.Journeys.Get(ctx, l.TrackingNumber())
 		if err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
-		now := u.now()
 		if err := j.Void(now); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		events, err := l.Void(reason, now)
 		if err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if err := u.Labels.Save(ctx, l); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if err := u.Journeys.Save(ctx, j); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
 		if err := u.publish(ctx, events); err != nil {
-			return views.Label{}, err
+			return nil, err
 		}
-		return views.LabelFrom(l), nil
+		return views.AnyLabelFrom(l), nil
 	})
+}
+
+// voidReturn voids a reverse label: there is no journey and no handover to
+// refuse (ADR 0017).
+func (u *VoidLabel) voidReturn(ctx context.Context, l *label.ShippingLabel, reason string, now time.Time) (views.AnyLabel, error) {
+	events, err := l.Void(reason, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := u.Labels.Save(ctx, l); err != nil {
+		return nil, err
+	}
+	if err := u.publish(ctx, events); err != nil {
+		return nil, err
+	}
+	return views.AnyLabelFrom(l), nil
 }
