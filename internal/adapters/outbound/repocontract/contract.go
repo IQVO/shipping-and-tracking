@@ -21,9 +21,11 @@ type Fixture struct {
 	Catalog   ports.CatalogDimensionsView
 	// NodeDestinations is the NodeDestinationView read model (ADR 0018).
 	NodeDestinations ports.NodeDestinationView
-	Inbox            ports.ProcessedEvents
-	Outbox           ports.EventOutbox
-	UoW              ports.UnitOfWork
+	// PickupPoints is the PickupPointView read model (ADR 0016).
+	PickupPoints ports.PickupPointView
+	Inbox        ports.ProcessedEvents
+	Outbox       ports.EventOutbox
+	UoW          ports.UnitOfWork
 	// OutboxCount returns how many events are stored in the outbox. Nil skips
 	// the outbox atomicity checks.
 	OutboxCount func(ctx context.Context) (int, error)
@@ -53,6 +55,7 @@ func Run(t *testing.T, factory Factory) {
 		{"Stale", staleCases},
 		{"Catalog", catalogCases},
 		{"NodeDestination", nodeDestinationCases},
+		{"PickupPoint", pickupPointCases},
 		{"Inbox", inboxCases},
 		{"UnitOfWork", unitOfWorkCases},
 	}

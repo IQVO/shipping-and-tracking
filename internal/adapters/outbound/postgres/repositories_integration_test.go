@@ -23,8 +23,8 @@ func TestPostgresPassesTheRepositoryContract(t *testing.T) {
 		return repocontract.Fixture{
 			Labels: postgres.NewLabelRepo(pool), Snapshots: postgres.NewSnapshotRepo(pool), Journeys: postgres.NewJourneyRepo(pool),
 			Catalog: postgres.NewCatalogRepo(pool), Inbox: postgres.NewProcessedEventRepo(pool),
-			NodeDestinations: postgres.NewNodeDestinationRepo(pool),
-			Outbox:           postgres.NewOutbox(postgres.NewOutboxRepo(pool), kafka.NewEncoder()), UoW: postgres.NewUnitOfWork(pool),
+			NodeDestinations: postgres.NewNodeDestinationRepo(pool), PickupPoints: postgres.NewPickupPointRepo(pool),
+			Outbox: postgres.NewOutbox(postgres.NewOutboxRepo(pool), kafka.NewEncoder()), UoW: postgres.NewUnitOfWork(pool),
 			OutboxCount: func(ctx context.Context) (int, error) {
 				var n int
 				err := pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events`).Scan(&n)

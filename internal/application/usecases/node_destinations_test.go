@@ -75,15 +75,17 @@ func TestNoteNodeDestinationSkipsARedeliveredEventID(t *testing.T) {
 // The rebuild of ADR 0018 depends on this: an id the pickup-point fold claimed
 // long ago (identity node-topology) is still NEW to the NodeDestinationView
 // fold (its own identity), so replaying the topic fills the new view, while
-// the old claim keeps the replayed NodeRegistered from demoting the pickup
-// point back to PROPOSED.
+// the old claim makes the pickup-point fold skip the replayed NodeRegistered
+// (and a registration applied again never demotes a point: ADR 0016,
+// addendum of 2026-11-18).
 func TestAReplayedNodeRegisteredFillsTheNodeViewAndLeavesThePickupPointAlone(t *testing.T) {
 	r := pickupRig(t)
 	registered := usecases.NotePointCmd{Consumer: inboxNodeTopology, EventID: "ev-registered",
 		Point: repository.PickupPoint{ID: "node-pnt-07", StationNodeID: "node-ds-07", PostalPrefix: "07095000", State: "PROPOSED"}}
 	notePoint := usecases.NewNotePickupPoint(r.deps)
 	noErr(t, notePoint.Execute(context.Background(), registered))
-	putPickupPoint(t, r, "node-pnt-07", "ACTIVE") // the point was activated since
+	noErr(t, notePoint.ExecuteStatus(context.Background(), usecases.NotePointStatusCmd{ // the point was activated since
+		Consumer: inboxNodeTopology, EventID: "ev-activated", NodeID: "node-pnt-07", State: "ACTIVE"}))
 
 	// The replay: the same id is delivered again to both folds.
 	noErr(t, notePoint.Execute(context.Background(), registered))

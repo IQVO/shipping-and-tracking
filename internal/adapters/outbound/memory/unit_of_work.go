@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"strings"
 
 	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
@@ -59,4 +60,16 @@ func (p *ProcessedEvents) Claim(ctx context.Context, consumer, eventID string) (
 	}
 	p.s.st.processed[key] = struct{}{}
 	return true, nil
+}
+
+// Forget drops every claim of one consumer: the double's twin of an operator
+// clearing an inbox identity (DELETE FROM processed_events WHERE consumer =
+// $1, the runbook's pickup-point repair), so a test can replay claimed ids.
+func (p *ProcessedEvents) Forget(ctx context.Context, consumer string) {
+	defer p.s.enter(ctx)()
+	for key := range p.s.st.processed {
+		if strings.HasPrefix(key, consumer+"\x00") {
+			delete(p.s.st.processed, key)
+		}
+	}
 }
