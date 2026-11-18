@@ -39,6 +39,7 @@ type state struct {
 	catalog   map[string]repository.CatalogDimensions
 	areas     map[string]repository.AreaMode
 	points    map[string]repository.PickupPoint
+	nodes     map[string]repository.NodeDestination
 	processed map[string]struct{}
 	outbox    []shared.Event
 }
@@ -51,6 +52,7 @@ func newState() state {
 		catalog:   map[string]repository.CatalogDimensions{},
 		areas:     map[string]repository.AreaMode{},
 		points:    map[string]repository.PickupPoint{},
+		nodes:     map[string]repository.NodeDestination{},
 		processed: map[string]struct{}{},
 	}
 }
@@ -72,7 +74,7 @@ func cloneMap[K comparable, V any](m map[K]V) map[K]V {
 func (s *Store) capture() state {
 	return state{
 		labels: cloneMap(s.st.labels), snapshots: cloneMap(s.st.snapshots), journeys: cloneMap(s.st.journeys),
-		catalog: cloneMap(s.st.catalog), areas: cloneMap(s.st.areas), points: cloneMap(s.st.points), processed: cloneMap(s.st.processed),
+		catalog: cloneMap(s.st.catalog), areas: cloneMap(s.st.areas), points: cloneMap(s.st.points), nodes: cloneMap(s.st.nodes), processed: cloneMap(s.st.processed),
 		outbox: append([]shared.Event(nil), s.st.outbox...),
 	}
 }

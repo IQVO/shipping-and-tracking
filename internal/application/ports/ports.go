@@ -90,6 +90,17 @@ type PickupPointView interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// NodeDestinationView is the local read model of the destination prefix of
+// node-topology's nodes, every node type (ADR 0018). It has no state column
+// and no delete: a node's lifecycle is not this view's business.
+type NodeDestinationView interface {
+	// Upsert stores the row, replacing an earlier one of the same node. A
+	// blank NodeID is an error.
+	Upsert(ctx context.Context, n repository.NodeDestination) error
+	// Get returns the row of a node, or ErrNotFound.
+	Get(ctx context.Context, nodeID string) (repository.NodeDestination, error)
+}
+
 type AreaModeView interface {
 	// Apply stores the row when its assignment version is newer than the
 	// stored one; an equal or older version is acknowledged and dropped. It

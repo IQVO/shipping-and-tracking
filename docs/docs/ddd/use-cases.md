@@ -14,6 +14,7 @@ The use cases live in `internal/application/usecases`. Every use case that chang
 | Use case | Trigger | Inbound adapter | Events raised |
 | --- | --- | --- | --- |
 | `IssueLabel` (includes `StartJourney`) | `vendor-connectivity` | REST `POST /labels` | `LabelIssued` |
+| `IssueReturnLabel` | `customer-returns` | REST `POST /return-labels` | `LabelIssued` (with `purpose: RETURN`) |
 | `VoidLabel` | operations tooling | REST `POST /labels/{labelRef}/voids` | `LabelVoided` |
 | `RecordScan` | any REST caller | REST `POST /journeys/{trackingNumber}/scans` | `PackageScanned`, plus `PackageHandedOver` or `PackageDelivered` on those transitions |
 | `ApplyScans` | consumed `VendorShipmentConfirmed`, `LoadDeparted`, `LoadArrived`, `PackageOutForDelivery`, `DeliveryAttempted` | the four Kafka consumers | same as `RecordScan`, per tracking number |
@@ -24,6 +25,7 @@ The use cases live in `internal/application/usecases`. Every use case that chang
 | `PurgeShipTo` | timer, `HOUSEKEEPING_INTERVAL` (1 h), also at start | scheduler job `ship-to-purge` | none |
 | `Housekeeping` of the technical tables | timer, `HOUSEKEEPING_INTERVAL`, also at start | scheduler job `housekeeping` (`postgres.Housekeeping`) | none |
 | `RecordCatalogItem` | consumed `CatalogItemCreated` | catalog consumer | none |
+| `NoteNodeDestination` | consumed `NodeRegistered`, every node type | node-topology consumer | none |
 | `GetJourney` (query) | shoppers, customer-ordering, console, agents | REST `GET /journeys/{trackingNumber}`, MCP and A2A `get_journey` | none |
 
 ## Errors and the problem types they become
@@ -37,6 +39,7 @@ REST errors are RFC 9457 `application/problem+json`; `type` is the slug (`intern
 | missing `Idempotency-Key` | 400 | `idempotency-key-required` |
 | `ports.ErrNotFound` | 404 | `not-found` |
 | `label.ErrLabelAlreadyIssued` | 409 | `label-already-issued` |
+| `shipto.ErrDestinationPrefixUnavailable` | 409 | `destination-prefix-unavailable` |
 | `label.ErrTrackingNumberTaken` | 409 | `tracking-number-taken` |
 | `journey.ErrVoidAfterHandover` | 409 | `void-after-handover` |
 | `journey.ErrDuplicateScan` | 409 | `duplicate-scan` |
@@ -62,6 +65,19 @@ Source: `internal/application/usecases/labels.go`, `internal/domain/label/label.
   5. In one transaction: mint `labelRef` (`lbl-<uuid>`) and a tracking number (`RN` plus 16 base-32 characters), save the label, save the sealed snapshot, **start the journey** (`StartJourney`, state `LABELLED`, version 1, no event of its own) and enqueue `LabelIssued`.
 - **Result:** `201` with the label metadata, never the address. The attempt is counted once in `shipping.labels.issued` as `issued` or `rejected` with the reason.
 - **Idempotency:** the `Idempotency-Key` replays the first response; a new key for the same package hits `label-already-issued`.
+
+## IssueReturnLabel
+
+- **Trigger:** `customer-returns`, for one package of a return authorization. REST `POST /return-labels`, `Idempotency-Key` required (ADR 0017, ADR 0018).
+- **Invariants:** one label per `(returnAuthorizationId, packageNo)`; the return destination is named by exactly one of `destinationNodeId` and the deprecated `destinationPostalPrefix`.
+- **Flow:**
+  1. Validate the command; both destination forms, or neither, is `validation-failed`.
+  2. Look up a label for `(returnAuthorizationId, packageNo)`; a hit is `label-already-issued`.
+  3. Resolve the destination prefix. For `destinationNodeId`, read the node's row of the local `NodeDestinationView` (`node_destinations`), which holds the prefix this context derived from the node's registered postal code (`shipto.NodePrefix`). No row, or a row with an empty prefix, is `destination-prefix-unavailable`: nothing is stored and customer-ordering is not called. For `destinationPostalPrefix` the value is taken as sent and the view is not read. The use case does not judge whether the node is the right one or whether it is active.
+  4. Read the ship-to of `orderId` from customer-ordering, before the transaction, and derive the `stopKey` exactly as the outbound label of that order did.
+  5. In one transaction: save the label (`purpose: RETURN`, tier `STANDARD`, carrier `RN-GROUND`) and enqueue `LabelIssued`. No journey is started and no snapshot is sealed.
+- **Result:** `201` with the `ReturnLabel`. The attempt is counted once in `shipping.labels.issued`.
+- **Idempotency:** the `Idempotency-Key` replays the first stored response for 24 hours. `destination-prefix-unavailable` is not stored (like `concurrent-update`; `notStoredUnderKey` in `internal/adapters/inbound/http/response.go`): the same request under the same key is executed again and is served once the node fact has arrived, and that `201` is then what the key replays (ADR 0018).
 
 ## VoidLabel
 

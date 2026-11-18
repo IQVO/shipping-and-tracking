@@ -120,3 +120,13 @@ Known cost: oasdiff reports the void route's `oneOf` as one WARNING
 (`response-body-wrapped-in-one-of-original-preserved`), not an error; a
 consumer generated from the older spec keeps working for outbound labels, the
 only kind it can hold a `labelRef` of.
+
+## Addendum 2026-11-18: superseded in part by ADR 0018
+
+One part of the Decision above is superseded by
+[ADR 0018](./0018-return-destination-prefix-from-the-destination-node.md): who
+knows the return destination's prefix. The caller now names the destination
+node (`destinationNodeId`) and this context derives the prefix from its own
+node view; `destinationPostalPrefix` stays accepted, deprecated, until a later,
+separately coordinated change removes it. The Decision text above is left as
+it was written.

@@ -72,8 +72,15 @@ type PointNoter interface {
 	Execute(ctx context.Context, cmd usecases.NotePointCmd) error
 }
 
+// NodeNoter is the NoteNodeDestination use case (ADR 0018).
+type NodeNoter interface {
+	Execute(ctx context.Context, cmd usecases.NoteNodeDestinationCmd) error
+}
+
 // nodeRegisteredData is the tolerant local copy of node-topology's
-// NodeRegistered; only the pickup fields are read (ADR 0016).
+// NodeRegistered. nodeId and postalCode are read for EVERY node type (the
+// NodeDestinationView, ADR 0018); nodeType and servingStationNodeId only tell
+// and place a pickup point (ADR 0016). Everything else is dropped.
 type nodeRegisteredData struct {
 	NodeID               string  `json:"nodeId"`
 	NodeType             string  `json:"nodeType"`
@@ -106,16 +113,48 @@ func pickupPointOf(d nodeRegisteredData) repository.PickupPoint {
 	return repository.PickupPoint{ID: d.NodeID, StationNodeID: station, PostalPrefix: d.PostalCode, State: "PROPOSED"}
 }
 
-// pointHandlers notes pickup points from the node lifecycle events.
-func pointHandlers(uc PointNoter) map[string]HandlerFunc {
-	out := map[string]HandlerFunc{
-		"com.retailnetwork.logistics.node-topology.node.NodeRegistered": func(ctx context.Context, e ce.Event) error {
-			d, err := decodeData[nodeRegisteredData](e)
-			if err != nil {
+// TypeNodeRegistered feeds the NodeDestinationView (every node type, ADR 0018)
+// and the PickupPointView (pickup points, ADR 0016).
+const TypeNodeRegistered = "com.retailnetwork.logistics.node-topology.node.NodeRegistered"
+
+// nodeRegisteredHandler folds one NodeRegistered into the two node views, each
+// in its own unit and under its own inbox identity: the destination prefix of
+// the node, whatever its type, then the pickup-point row. A redelivery after
+// a failure between the two is harmless: the fold that committed skips its
+// claimed id. A nil fold is not wired.
+func nodeRegisteredHandler(points PointNoter, nodes NodeNoter) HandlerFunc {
+	return func(ctx context.Context, e ce.Event) error {
+		d, err := decodeData[nodeRegisteredData](e)
+		if err != nil {
+			return err
+		}
+		if d.NodeID == "" {
+			return fmt.Errorf("%w: nodeId is blank", errBadPayload)
+		}
+		if nodes != nil {
+			if err := nodes.Execute(ctx, usecases.NoteNodeDestinationCmd{Consumer: ConsumerNodeDestinations, EventID: e.ID(),
+				NodeID: d.NodeID, PostalCode: d.PostalCode}); err != nil {
 				return err
 			}
-			return uc.Execute(ctx, usecases.NotePointCmd{Consumer: ConsumerNodeTopology, EventID: e.ID(), Point: pickupPointOf(d)})
-		},
+		}
+		if points == nil {
+			return nil
+		}
+		return points.Execute(ctx, usecases.NotePointCmd{Consumer: ConsumerNodeTopology, EventID: e.ID(), Point: pickupPointOf(d)})
+	}
+}
+
+// nodeHandlers maps the node events: NodeRegistered to both node views, the
+// three status facts to the PickupPointView only. The status facts carry a
+// nodeId and an instant or a reason, nothing a prefix could come from, and
+// the NodeDestinationView keeps no state: they never reach it.
+func nodeHandlers(uc PointNoter, nodes NodeNoter) map[string]HandlerFunc {
+	out := map[string]HandlerFunc{}
+	if uc != nil || nodes != nil {
+		out[TypeNodeRegistered] = nodeRegisteredHandler(uc, nodes)
+	}
+	if uc == nil {
+		return out
 	}
 	for typ, state := range nodeStateTypes {
 		state := state
@@ -132,9 +171,10 @@ func pointHandlers(uc PointNoter) map[string]HandlerFunc {
 }
 
 // NodeTopologyHandlers maps ServiceAreaAssigned to the AreaModeView upsert
-// under the assignment-version guard, and the node lifecycle events to the
-// PickupPointView (ADR 0016).
-func NodeTopologyHandlers(uc AreaApplier, logger *slog.Logger, noter PointNoter) map[string]HandlerFunc {
+// under the assignment-version guard, the node lifecycle events to the
+// PickupPointView (ADR 0016) and NodeRegistered also to the
+// NodeDestinationView (ADR 0018).
+func NodeTopologyHandlers(uc AreaApplier, logger *slog.Logger, noter PointNoter, nodes NodeNoter) map[string]HandlerFunc {
 	logger = defaultLogger(logger)
 	out := map[string]HandlerFunc{
 		TypeServiceAreaAssigned: func(ctx context.Context, e ce.Event) error {
@@ -155,16 +195,14 @@ func NodeTopologyHandlers(uc AreaApplier, logger *slog.Logger, noter PointNoter)
 			return nil
 		},
 	}
-	if noter != nil {
-		for typ, h := range pointHandlers(noter) {
-			out[typ] = h
-		}
+	for typ, h := range nodeHandlers(noter, nodes) {
+		out[typ] = h
 	}
 	return out
 }
 
 // NewNodeTopologyConsumer reads node-topology's topic under groupID
 // (AREAS_CONSUMER_GROUP, never a literal).
-func NewNodeTopologyConsumer(brokers []string, groupID string, uc AreaApplier, noter PointNoter, logger *slog.Logger) *Consumer {
-	return newConsumer("node-topology consumer", brokers, NodeTopologyTopic, groupID, NodeTopologyHandlers(uc, logger, noter), logger)
+func NewNodeTopologyConsumer(brokers []string, groupID string, uc AreaApplier, noter PointNoter, nodes NodeNoter, logger *slog.Logger) *Consumer {
+	return newConsumer("node-topology consumer", brokers, NodeTopologyTopic, groupID, NodeTopologyHandlers(uc, logger, noter, nodes), logger)
 }

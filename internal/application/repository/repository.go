@@ -81,6 +81,16 @@ type PickupPoint struct {
 	State         string
 }
 
+// NodeDestination is one row of the NodeDestinationView read model (ADR 0018):
+// what a label needs about a node of node-topology, whatever its type - its id
+// and the destination prefix this context derived from the node's registered
+// postal code (shipto.NodePrefix). The postal code itself is not kept. An
+// empty PostalPrefix means the node is known and its code left nothing usable.
+type NodeDestination struct {
+	NodeID       string
+	PostalPrefix string
+}
+
 // AreaMode is one row of the AreaModeView read model: node-topology's
 // ServiceAreaAssigned folded locally, with the assignment version as the
 // staleness guard.

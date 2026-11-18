@@ -181,4 +181,6 @@ One `package_journeys` row plus its append-only `journey_scans` rows, every scan
 | --- | --- | --- | --- |
 | `catalog_dimensions` (`ports.CatalogDimensionsView`) | offer-availability `CatalogItemCreated` (`catalogItemId`, `title`, `lengthMm`, `widthMm`, `heightMm`, `weightG`, `hazmat`, `fragile`) | Item dimensions, weight and handling flags | It enforces no invariant and accepts no command: a local copy of another context's facts, rebuilt by replaying the topic. No use case of this repository reads it back yet |
 
+| `node_destinations` (`ports.NodeDestinationView`, ADR 0018) | node-topology `NodeRegistered`, every node type (`nodeId`, `postalCode`) | The destination prefix of a return label that names its destination by node (`IssueReturnLabel`) | It enforces no invariant and accepts no command: per node, the prefix this context derives from another context's fact (`shipto.NodePrefix`). No state, no delete; rebuilt by replaying the topic under a fresh consumer group |
+
 `GET /journeys/{trackingNumber}` reads the `PackageJourney` itself through `views.Journey`; it is a query, not a separate read model.

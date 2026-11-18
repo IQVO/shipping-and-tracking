@@ -31,6 +31,13 @@ func newFixture(t *testing.T) *fixture { return newFixtureLogged(t, nil) }
 // means slog.Default()).
 func newFixtureLogged(t *testing.T, logger *slog.Logger) *fixture {
 	t.Helper()
+	return newFixtureWith(t, logger, nil)
+}
+
+// newFixtureWith is newFixtureLogged with the POST routes wrapped by idem, the
+// seat of the Idempotency-Key middleware (nil leaves them unwrapped).
+func newFixtureWith(t *testing.T, logger *slog.Logger, idem func(route string) func(http.Handler) http.Handler) *fixture {
+	t.Helper()
 	s := memory.NewStore()
 	gw := memory.NewShipToGateway()
 	gw.Put("ord-1", shipto.Address{Name: "Ana Example", Line1: "10 Sample Street", City: "Sampletown", Region: "SP", PostalCode: "01310-100", CountryCode: "BR"})
@@ -38,11 +45,11 @@ func newFixtureLogged(t *testing.T, logger *slog.Logger) *fixture {
 	d := usecases.Deps{
 		Labels: s.Labels(), Snapshots: s.Snapshots(), Journeys: s.Journeys(), Catalog: s.Catalog(), Inbox: s.Inbox(),
 		Outbox: s.Outbox(), UoW: s.UnitOfWork(), Clock: memory.NewClock(t0), IDs: &memory.SequentialIDs{}, ShipTo: gw,
-		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{},
+		Sealer: memory.MarkSealer{}, StopKeys: memory.HashKeyer{}, NodeDestinations: s.NodeDestinations(),
 	}
 	srv := httptest.NewServer(inbound.NewRouter(&inbound.Server{
 		IssueLabel: usecases.NewIssueLabel(d), IssueReturnLabel: usecases.NewIssueReturnLabel(d), VoidLabel: usecases.NewVoidLabel(d),
-		RecordScan: usecases.NewRecordScan(d), GetJourney: usecases.NewGetJourney(d),
+		RecordScan: usecases.NewRecordScan(d), GetJourney: usecases.NewGetJourney(d), Idempotency: idem,
 	}, logger, ""))
 	t.Cleanup(srv.Close)
 	return &fixture{srv: srv, store: s, gateway: gw}

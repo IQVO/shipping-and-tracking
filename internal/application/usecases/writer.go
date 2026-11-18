@@ -38,6 +38,10 @@ type Deps struct {
 	AreaModes ports.AreaModeView
 	// PickupPoints is the local copy of node-topology's pickup points (ADR 0016).
 	PickupPoints ports.PickupPointView
+	// NodeDestinations is the local copy of the destination prefix of every
+	// node of node-topology (ADR 0018); only a return label that names its
+	// destination by node reads it.
+	NodeDestinations ports.NodeDestinationView
 	// Metrics records the business outcome of each label-issue attempt; nil
 	// records nothing, so unit tests need no wiring.
 	Metrics ports.LabelMetrics

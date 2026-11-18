@@ -157,6 +157,7 @@ The migration tool keeps its own bookkeeping table in each database (the golang-
 | `package_journeys` | PackageJourney (root) | One row per package; `version` for optimistic concurrency, because four topics and REST write it |
 | `journey_scans` | PackageJourney (its `Scan` entities) | Append-only |
 | `catalog_dimensions` | none (read model) | Upsert on `CatalogItemCreated` |
+| `node_destinations` | none (read model, ADR 0018) | Upsert on `NodeRegistered` of any node type: `node_id`, `postal_prefix` (0 to 5 characters from A-Z 0-9; empty when the registered postal code left nothing), `updated_at`. No state, never deleted |
 | `outbox_events` | none (infrastructure) | Transactional outbox |
 | `processed_events` | none (infrastructure) | Consumer inbox |
 | `idempotency_keys` | none (infrastructure) | REST idempotency |
