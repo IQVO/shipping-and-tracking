@@ -57,7 +57,7 @@ Any consumer, job loop or the relay returning on its own makes the process exit 
 | consume | `retailnetwork.linehaul-transportation.events` | `LINEHAUL_CONSUMER_GROUP` | `retailnetwork.linehaul-transportation.events.dlq` |
 | consume | `retailnetwork.last-mile-delivery.events` | `LASTMILE_CONSUMER_GROUP` | `retailnetwork.last-mile-delivery.events.dlq` |
 | consume | `retailnetwork.offer-availability.events` | `CATALOG_CONSUMER_GROUP` | `retailnetwork.offer-availability.events.dlq` |
-| consume | `retailnetwork.node-topology.events` | `ST_AREAS_CONSUMER_GROUP` (`config.areasConsumerGroup`; feeds `area_modes`, `pickup_points` and `node_destinations`) | `retailnetwork.node-topology.events.dlq` |
+| consume | `retailnetwork.node-topology.events` | `ST_AREAS_CONSUMER_GROUP` (`config.areasConsumerGroup`; feeds `area_modes`, `pickup_points` and `node_destinations`; each fold has its own inbox identity) | `retailnetwork.node-topology.events.dlq` |
 | consume (`cmd/st-projector`, ADR 0012) | `retailnetwork.shipping-and-tracking.events` (its own topic) | `ANALYTICS_CONSUMER_GROUP` (`shipping-and-tracking-analytics`) | `retailnetwork.shipping-and-tracking.analytics.dlq` (poison only; transient failures retry forever) |
 
 Source: `internal/adapters/inbound/kafka/handlers.go` (topics), `deadletter.go` (`DLQSuffix = ".dlq"`), `internal/adapters/outbound/kafka/encoder.go` (produced topic). Group ids are chart values and must stay stable across restarts so a rescheduled pod resumes from its committed offsets.
@@ -155,11 +155,11 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 
 `node_destinations` (ADR 0018) holds, per node of node-topology, the destination prefix of a return label that names its destination by `destinationNodeId`. It is fed by `NodeRegistered`, which node-topology emits ONCE per node. Migration `0008` creates the table empty, and every `NodeRegistered` consumed before it fed only `pickup_points`, so every node registered before the deploy is unknown to the view until it is rebuilt. This repository has no replay tooling: the rebuild is a change of consumer group.
 
-**What the inbox does to a redelivered id.** A claim is the pair `(consumer, CloudEvents id)` in `processed_events`, written in the transaction of the effect and kept 30 days. The older folds of the node-topology topic (`area_modes`, `pickup_points`) claim as `node-topology`; the `node_destinations` fold claims as `node-topology.node-destinations`. On a replay of the topic:
+**What the inbox does to a redelivered id.** A claim is the pair `(consumer, CloudEvents id)` in `processed_events`, written in the transaction of the effect and kept 30 days. The `pickup_points` fold claims as `node-topology`; the `node_destinations` fold claims as `node-topology.node-destinations`; the `area_modes` fold claims as `node-topology.area-modes` since ADR 0019 (before it, as `node-topology`). On a replay of the topic:
 
 - The `node_destinations` fold has never claimed those ids, so each `NodeRegistered` is applied once; a second delivery of the same id is skipped (`TestNoteNodeDestinationSkipsARedeliveredEventID`).
-- The older folds skip every id they claimed within the last 30 days: `area_modes` and `pickup_points` do not change, and a pickup point is not demoted to `PROPOSED` (`TestAReplayedNodeRegisteredFillsTheNodeViewAndLeavesThePickupPointAlone`, both in `internal/application/usecases/node_destinations_test.go`).
-- An id older than 30 days is no longer claimed and IS applied again by the older folds. `area_modes` drops it (the assignment-version guard). `pickup_points` re-folds the point's history in its original order, so a point is `PROPOSED` between its replayed `NodeRegistered` and its replayed `NodeActivated`, and a pickup label of that point is refused for that moment. This arises only if the topic retains more than 30 days.
+- The `pickup_points` fold skips every id it claimed within the last 30 days: the table does not change, and a pickup point is not demoted to `PROPOSED` (`TestAReplayedNodeRegisteredFillsTheNodeViewAndLeavesThePickupPointAlone`, both in `internal/application/usecases/node_destinations_test.go`).
+- An id older than 30 days is no longer claimed and IS applied again by the `pickup_points` fold. `pickup_points` re-folds the point's history in its original order, so a point is `PROPOSED` between its replayed `NodeRegistered` and its replayed `NodeActivated`, and a pickup label of that point is refused for that moment. This arises only if the topic retains more than 30 days.
 - A message that was dead-lettered the first time is dead-lettered again: expect duplicates on `retailnetwork.node-topology.events.dlq`.
 
 **The dependency.** The replay only finds what the topic still retains. A node whose `NodeRegistered` is past the topic's retention cannot be restored this way and stays `409 destination-prefix-unavailable`. This service has no other source: it never calls node-topology, and node-topology does not publish a node's registration a second time.
@@ -174,3 +174,14 @@ Every variable `cmd/api` reads (`cmd/api/config.go`, header of `cmd/api/main.go`
 6. Keep the new group id; it is now the stable one. (Going back to the old id is harmless, its committed offsets resume and every id in between is already claimed, but it gains nothing.)
 
 A caller enabled earlier is refused, not stuck: a request for a node the view does not hold answers `409 destination-prefix-unavailable`, and that refusal is not stored under the caller's `Idempotency-Key` (ADR 0018). The caller retries the same request with the same key; it is executed again each time and is served as soon as the node's row exists. Until then no return label can be issued for that node, which is why the rebuild comes first.
+
+### Backfilling the delivery station of the areas
+
+`area_modes.delivery_station_node_id` (ADR 0019, migration `0009`) is the station published as `destinationStationNodeId` on `LabelIssued`. The migration adds the column NULL: every row stored before it has no station, and a label of its prefix is issued without the field (the legacy payload) until the row is filled. A row fills when a `ServiceAreaAssigned` of its prefix is applied that brings a station and whose `assignmentVersion` is greater than, or equal to, the stored one (the guard lets an equal version write only into a NULL station, and never replaces a stored station with an equal version).
+
+Two ways, either is enough:
+
+1. **Replay the topic.** The area fold claims its ids as `node-topology.area-modes`, an identity that has never claimed the ids it claimed before ADR 0019 as `node-topology`, so a replay applies them again. Set `config.areasConsumerGroup` (`ST_AREAS_CONSUMER_GROUP`) to a group id that has never existed, for example `shipping-and-tracking-areas-r3`, roll out, and wait until the group has no lag (`kafka-consumer-groups.sh --describe`). Both other folds of the same topic are idempotent under the replay: `node_destinations` skips the ids it claimed under its own identity, and `pickup_points` skips what it claimed within 30 days (the caveat above applies to older ids). It only finds what the topic still retains.
+2. **Have node-topology emit the assignment again**, at the same `assignmentVersion` or a newer one; the event is a new CloudEvents id.
+
+Verify: `SELECT postal_prefix, assignment_version, delivery_station_node_id FROM area_modes WHERE delivery_station_node_id IS NULL;` lists the prefixes still without a station. A prefix that stays NULL has no retained or re-emitted assignment, or node-topology named no valid station for it. Events already published are never amended: only labels issued after the fill carry the station.

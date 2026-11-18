@@ -16,13 +16,15 @@ type ApplyAreaCmd struct {
 // ApplyAreaResult says what one area assignment did.
 type ApplyAreaResult struct {
 	Skipped bool // the CloudEvents id had been claimed before
-	Stale   bool // an older-or-equal assignment version: acknowledged, dropped
+	Stale   bool // an older assignment version, or an equal one that adds no station: acknowledged, dropped
 	Stored  bool
 }
 
 // ApplyAreaAssignment folds a ServiceAreaAssigned into the AreaModeView read
 // model under the assignment-version guard (the same guard delivery-promise
-// uses): an event older than the stored version changes nothing.
+// uses): an event older than the stored version changes nothing, and one of
+// the stored version changes only a row that lacks its delivery station (ADR
+// 0019).
 type ApplyAreaAssignment struct{ writer }
 
 // NewApplyAreaAssignment builds the use case.

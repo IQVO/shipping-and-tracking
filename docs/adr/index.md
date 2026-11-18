@@ -32,3 +32,4 @@ The *Status* column is copied from each ADR's own `## Status` section.
 | [0016](./0016-pickup-collection.md) | pickup collection - deposit, collect and the uncollected hold | Accepted (2026-11-13) |
 | [0017](./0017-reverse-return-labels.md) | reverse labels for customer returns (C8): purpose, return-authorization link and the /return-labels route | Accepted (2026-11-14) |
 | [0018](./0018-return-destination-prefix-from-the-destination-node.md) | the label owner derives the return destination prefix from the destination node (supersedes one part of 0017) | Accepted (2026-11-18) |
+| [0019](./0019-destination-station-on-label-issued.md) | the delivery station of an area is kept and published as the destination station of `LabelIssued` (supersedes one part of 0015) | Accepted (2026-11-18) |

@@ -10,21 +10,23 @@ import (
 	"github.com/claudioed/shipping-and-tracking/internal/application/repository"
 	"github.com/claudioed/shipping-and-tracking/internal/application/usecases"
 	"github.com/claudioed/shipping-and-tracking/internal/domain/journey"
+	"github.com/claudioed/shipping-and-tracking/internal/domain/shared"
 )
 
 // --- node-topology ---------------------------------------------------------
 
 // serviceAreaAssignedData is the tolerant local copy of node-topology's
-// ServiceAreaAssigned (ADR 0015). deliveryStationNodeId, regionId and every
-// unknown field are read and dropped: this context keeps only the delivery
-// mode, the declared carrier options and the assignment version. An absent
-// deliveryMode or carriers list is the pre-C4 meaning: NETWORK_ROUTE, no
-// options.
+// ServiceAreaAssigned (ADR 0015). regionId and every unknown field are read
+// and dropped: this context keeps the delivery mode, the declared carrier
+// options, the assignment version and, since ADR 0019, the delivery station
+// node id (it is published on LabelIssued). An absent deliveryMode or carriers
+// list is the pre-C4 meaning: NETWORK_ROUTE, no options.
 type serviceAreaAssignedData struct {
-	PostalPrefix      string              `json:"postalPrefix"`
-	DeliveryMode      string              `json:"deliveryMode"`
-	Carriers          []carrierOptionData `json:"carriers"`
-	AssignmentVersion int64               `json:"assignmentVersion"`
+	PostalPrefix          string              `json:"postalPrefix"`
+	DeliveryStationNodeID string              `json:"deliveryStationNodeId"`
+	DeliveryMode          string              `json:"deliveryMode"`
+	Carriers              []carrierOptionData `json:"carriers"`
+	AssignmentVersion     int64               `json:"assignmentVersion"`
 }
 
 type carrierOptionData struct {
@@ -59,7 +61,19 @@ func areaModeOf(d serviceAreaAssignedData) (repository.AreaMode, error) {
 	if mode == repository.DeliveryModeCarrierHandoff && len(carriers) == 0 {
 		return repository.AreaMode{}, fmt.Errorf("%w: a CARRIER_HANDOFF area declares at least one carrier option", errBadPayload)
 	}
-	return repository.AreaMode{PostalPrefix: d.PostalPrefix, DeliveryMode: mode, Carriers: carriers, Version: d.AssignmentVersion}, nil
+	return repository.AreaMode{PostalPrefix: d.PostalPrefix, DeliveryMode: mode, Carriers: carriers, Version: d.AssignmentVersion,
+		DeliveryStationNodeID: stationOf(d.DeliveryStationNodeID)}, nil
+}
+
+// stationOf is the station id this context keeps: the node id as sent, or ""
+// for an absent, blank or malformed one. A station is advisory (ADR 0019): a
+// value no label could carry is treated as absent rather than refusing the
+// whole assignment, whose mode and carriers are still wanted.
+func stationOf(id string) string {
+	if !shared.ValidID(id) {
+		return ""
+	}
+	return id
 }
 
 // AreaApplier is the ApplyAreaAssignment use case (ADR 0015).
@@ -186,7 +200,7 @@ func NodeTopologyHandlers(uc AreaApplier, logger *slog.Logger, noter PointNoter,
 			if err != nil {
 				return err
 			}
-			res, err := uc.Execute(ctx, usecases.ApplyAreaCmd{Consumer: ConsumerNodeTopology, EventID: e.ID(), Area: area})
+			res, err := uc.Execute(ctx, usecases.ApplyAreaCmd{Consumer: ConsumerAreaModes, EventID: e.ID(), Area: area})
 			if err != nil {
 				return err
 			}

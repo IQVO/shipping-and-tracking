@@ -114,6 +114,16 @@ func goldenCases() []goldenCase {
 			`{"trackingNumber":"RN0123456789ABCDEF","assignmentId":"asg-001","orderId":"ord-001","reason":"NOT_HOME",` +
 				`"flaggedAt":"2026-10-24T16:30:00Z"}`,
 		},
+		{
+			"LabelIssued",
+			label.LabelIssued{Header: hdr(1), LabelRef: "lbl-7c1f", TrackingNumber: "RN0123456789ABCDEF", PONumber: "PO-1001",
+				AssignmentID: "asg-001", OrderID: "ord-001", PackageNo: 1, Tier: shared.TierNextDay, Carrier: "RN-EXPRESS",
+				StopKey: stopKey, DestinationPostalPrefix: "01310", DestinationStationNodeID: "node-ds-07"},
+			"label", "lbl-7c1f",
+			`{"labelRef":"lbl-7c1f","trackingNumber":"RN0123456789ABCDEF","poNumber":"PO-1001","assignmentId":"asg-001","orderId":"ord-001",` +
+				`"packageNo":1,"tier":"NEXT_DAY","carrier":"RN-EXPRESS","stopKey":"` + stopKey + `","destinationPostalPrefix":"01310",` +
+				`"destinationStationNodeId":"node-ds-07"}`,
+		},
 	}
 }
 
@@ -219,5 +229,31 @@ func TestEncoder_NoPayloadCarriesAnAddressField(t *testing.T) {
 				t.Errorf("%s carries %s", c.name, banned)
 			}
 		}
+	}
+}
+
+// The destination station is optional and additive: a LabelIssued that has
+// none is byte-identical to the one published before ADR 0019 (the first
+// "LabelIssued" golden case above), and one that has it adds exactly one
+// key, after destinationPostalPrefix.
+func TestEncoder_LabelIssuedStationIsOmittedWhenAbsentAndAddedWhenPresent(t *testing.T) {
+	enc := &Encoder{NewID: fixedID}
+	ev := goldenCases()[0].event.(label.LabelIssued)
+	legacy, err := enc.Encode(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(legacy[0].Value), "destinationStationNodeId") {
+		t.Fatalf("an event without a station must not carry the key: %s", legacy[0].Value)
+	}
+	ev.DestinationStationNodeID = "node-ds-07"
+	with, err := enc.Encode(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(string(legacy[0].Value), `"destinationPostalPrefix":"01310"}`,
+		`"destinationPostalPrefix":"01310","destinationStationNodeId":"node-ds-07"}`, 1)
+	if want == string(legacy[0].Value) || string(with[0].Value) != want {
+		t.Fatalf("with a station:\n got %s\nwant %s", with[0].Value, want)
 	}
 }

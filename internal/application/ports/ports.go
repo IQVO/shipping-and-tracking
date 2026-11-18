@@ -103,8 +103,10 @@ type NodeDestinationView interface {
 
 type AreaModeView interface {
 	// Apply stores the row when its assignment version is newer than the
-	// stored one; an equal or older version is acknowledged and dropped. It
-	// reports whether the row was stored.
+	// stored one; an older version is acknowledged and dropped, and so is an
+	// equal one unless the stored row has no delivery station and this one
+	// brings it (the backfill of ADR 0019). It reports whether the row was
+	// stored.
 	Apply(ctx context.Context, a repository.AreaMode) (bool, error)
 	// Get returns the row of a prefix, or ErrNotFound.
 	Get(ctx context.Context, postalPrefix string) (repository.AreaMode, error)

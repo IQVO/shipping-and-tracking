@@ -42,6 +42,9 @@ type labelIssuedData struct {
 	DestinationPostalPrefix string `json:"destinationPostalPrefix"`
 	// PickupPointID is empty on a ship-to label (ADR 0016).
 	PickupPointID string `json:"pickupPointId,omitempty"`
+	// DestinationStationNodeID is a node id, omitted when no station is
+	// known for the destination prefix (ADR 0019).
+	DestinationStationNodeID string `json:"destinationStationNodeId,omitempty"`
 	// Purpose and ReturnAuthorizationID appear only on a reverse label;
 	// an outbound label omits both (ADR 0017).
 	Purpose               string `json:"purpose,omitempty"`
@@ -175,7 +178,7 @@ func payloadFor(ev shared.Event) (any, error) {
 			LabelRef: string(e.LabelRef), TrackingNumber: string(e.TrackingNumber), PONumber: e.PONumber,
 			AssignmentID: e.AssignmentID, OrderID: e.OrderID, PackageNo: e.PackageNo, Tier: string(e.Tier),
 			Carrier: e.Carrier, StopKey: e.StopKey, DestinationPostalPrefix: e.DestinationPostalPrefix,
-			PickupPointID: e.PickupPointID,
+			PickupPointID: e.PickupPointID, DestinationStationNodeID: e.DestinationStationNodeID,
 		}
 		if e.Purpose == label.PurposeReturn {
 			d.Purpose, d.ReturnAuthorizationID = string(e.Purpose), e.ReturnAuthorizationID

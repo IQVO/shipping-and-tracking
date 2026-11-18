@@ -32,7 +32,7 @@ Delivery is at-least-once through the transactional outbox: the aggregate rows a
 
 | Event (type suffix) | Raised by | Payload (`data`) | Known consumers (per the AsyncAPI) |
 | --- | --- | --- | --- |
-| `label.LabelIssued` | `IssueLabel` | `labelRef`, `trackingNumber`, `poNumber`, `assignmentId`, `orderId`, `packageNo`, `tier`, `carrier`, `stopKey`, `destinationPostalPrefix` | linehaul-transportation, customer-ordering, last-mile-delivery |
+| `label.LabelIssued` | `IssueLabel` | `labelRef`, `trackingNumber`, `poNumber`, `assignmentId`, `orderId`, `packageNo`, `tier`, `carrier`, `stopKey`, `destinationPostalPrefix`, optional `destinationStationNodeId` (ADR 0019) | linehaul-transportation, customer-ordering, last-mile-delivery |
 | `label.LabelVoided` | `VoidLabel` | `labelRef`, `trackingNumber`, `reason` | customer-ordering, linehaul-transportation |
 | `journey.PackageScanned` | every applied scan | `trackingNumber`, `scanId`, `nodeId`, `scanType`, `at`, `state` | none named |
 | `journey.PackageHandedOver` | `LABELLED` to `HANDED_OVER` | `trackingNumber`, `poNumber`, `nodeId`, `handedOverAt` | node-performance |
@@ -75,6 +75,8 @@ Example (`LabelIssued`, from the AsyncAPI; the values are synthetic):
 }
 ```
 
+When the area covering `destinationPostalPrefix` has a known delivery station, `data` also carries `"destinationStationNodeId": "node-ds-07"` after `destinationPostalPrefix` (ADR 0019): a node id, never an address. The field is omitted when no station is known (and on a reverse label), and an event without it is byte-identical to the ones published before the field existed.
+
 ## Consumed
 
 Each topic has one consumer group (an environment variable, mandatory), a dead-letter topic `<topic>.dlq`, and an inbox row `(consumer, event_id)` in `processed_events` written in the same transaction as the effect. Unknown types and unknown fields are ignored. Handlers: `internal/adapters/inbound/kafka/handlers.go`, `handlers_lastmile.go`, `handlers_nodetopology.go`.
@@ -90,7 +92,7 @@ Each topic has one consumer group (an environment variable, mandatory), a dead-l
 | `retailnetwork.last-mile-delivery.events` | `com.retailnetwork.logistics.last-mile-delivery.route.StopEtaWindowAssigned` | `AssignEta` on every tracking number of the stop (the CloudEvents `time` is the `assignedAt`); raises `PackageEtaWindowAssigned`; the stop key is dropped |
 | `retailnetwork.last-mile-delivery.events` | `com.retailnetwork.logistics.last-mile-delivery.deliverypointprofile.DeliveryPointFlagged` (ADR 0014) | `RelayDeliveryPointFlag` on every tracking number of the stop: stores the flag and raises `PackageDeliveryPointFlagged` per package; `stopKey` and `failures` are not used |
 | `retailnetwork.offer-availability.events` | `com.retailnetwork.commerce.offer-availability.catalogitem.CatalogItemCreated` | upsert of the local `catalog_dimensions` read model |
-| `retailnetwork.node-topology.events` | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | upsert of the local `area_modes` read model, only when `assignmentVersion` is newer than the stored row |
+| `retailnetwork.node-topology.events` | `com.retailnetwork.logistics.node-topology.servicearea.ServiceAreaAssigned` (ADR 0015) | upsert of the local `area_modes` read model, only when `assignmentVersion` is newer than the stored row (an equal version also fills a missing `deliveryStationNodeId`, which is kept, ADR 0019) |
 | `retailnetwork.node-topology.events` | `com.retailnetwork.logistics.node-topology.node.NodeRegistered` (ADR 0016, ADR 0018) | a node of any type adds or replaces its row of the local node destination view (`node_destinations`: the node id and the destination prefix derived from `postalCode`); a `PICKUP_POINT` node also adds a row to the local pickup-point view |
 | `retailnetwork.node-topology.events` | `com.retailnetwork.logistics.node-topology.node.NodeActivated`, `...NodeSuspended`, `...NodeRetired` (ADR 0016) | sets the pickup-point row to `ACTIVE` or `SUSPENDED`; `NodeRetired` deletes it. None of the three reaches the node destination view |
 
