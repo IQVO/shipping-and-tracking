@@ -20,7 +20,7 @@ Routes to use cases, kept in sync with `apis/openapi.yaml` by hand (Spectral lin
 ## Conventions
 
 - Error shape: RFC 9457 `application/problem+json` with `type` = the slug (a model Err name in kebab-case, plus `not-found`, `illegal-transition`, `concurrent-update`, `validation-failed`). An unmapped error is a 500 `internal-error` whose detail never leaks the cause.
-- All three POSTs require `Idempotency-Key` (global key, 24 h replay, stored in the same transaction as the work): missing = 400 `idempotency-key-required`; malformed (not 1-128 printable ASCII) = 400 `idempotency-key-invalid`; reused with another method, path or body = 409 `idempotency-key-reused`. A `concurrent-update` 409 is never cached.
+- All three POSTs require `Idempotency-Key` (global key, 24 h replay, stored in the same transaction as the work): missing = 400 `idempotency-key-required`; malformed (not 1-128 printable ASCII) = 400 `idempotency-key-invalid`; reused with another method, path or body = 409 `idempotency-key-reused`. A `concurrent-update` 409 is never cached, nor is `destination-prefix-unavailable` (the one list `notStoredUnderKey` in `response.go`; ADR 0018): the key row rolls back and the same key retries the work.
 - A malformed body (bad JSON, unknown field, trailing data, an empty body) and a NUL character in a body or query are 422 `validation-failed`; a NUL in the path is 404 `not-found`.
 - No schema, request, response or log line carries a ship-to field (`TestContractsCarryNoShipToField`). `shipto.Address` redacts itself when formatted.
 - Auth: none, consistent with the fleet (decision of 2026-09-11, `TestNoAuthMiddlewareReintroduced`).

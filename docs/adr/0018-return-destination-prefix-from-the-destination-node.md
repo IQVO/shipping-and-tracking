@@ -105,6 +105,24 @@ refused with **`409 destination-prefix-unavailable`**
 says which of the two cases it is. One slug for both: the caller's reaction is
 the same.
 
+The refusal is **not stored under the Idempotency-Key**. It is a refusal the
+same request can pass later (the node fact arrives), it commits nothing, and
+the caller's key is deterministic per return and package: stored, it would be
+replayed to every retry for 24 hours although it had stopped being true. The
+handler marks it exactly as it already marks `concurrent-update`
+(`capture.DoNotCache`; the two are the one list `notStoredUnderKey` in
+`internal/adapters/inbound/http/response.go`), and the middleware then rolls
+its whole transaction back, the key row included. So a retry of the same
+request under the same key is executed again and is served once the node is
+known; that success is stored and replayed like any other; and until a request
+under the key is stored, the key is free for another body too. A success and a
+refusal that is final for the request (`label-already-issued`,
+`validation-failed`) stay stored. This is the second exception to the rule of
+ADR 0005 ("responses below 500 are cached"), after `concurrent-update`; the
+rollout of the same rule to the other refusals of the fleet is a separate
+decision and is not part of this ADR. For a node whose postal code left
+nothing, a retry is simply refused again.
+
 - Not `422 validation-failed`: the request is well formed, and the very same
   request is served once the node fact has arrived.
 - Not `404 not-found`: that answers a resource addressed by the path, and
@@ -144,16 +162,15 @@ deprecated).
   retaining each node's `NodeRegistered`: a node whose event is gone cannot be
   restored from the topic and stays refused. Until the rebuild is done and
   verified, no caller should send `destinationNodeId`.
-- **Known cost: the refusal is stored under the Idempotency-Key.** The
-  middleware stores every answer below 500 except `concurrent-update` and
-  replays it to the same key for 24 hours (ADR 0005, ADR 0010). So a
-  `destination-prefix-unavailable` answered under a key is replayed to a retry
-  of that key even after the node fact has arrived, until housekeeping purges
-  the row. A caller whose key is deterministic per (authorization, package)
-  cannot get that label under that key before then. This ADR does not change
-  what the middleware stores - that rule is being revisited for the whole
-  fleet, separately; `TestReturnLabelDestinationRefusalIsStoredAndReplayedUnderItsKey`
-  pins the behaviour as it is, and is the test to flip when the rule changes.
+- **A caller may retry with the same key.** A `destination-prefix-unavailable`
+  leaves no row under the Idempotency-Key, so a caller whose key is
+  deterministic per (authorization, package) keeps its key and retries until
+  the node is known. `TestReturnLabelDestinationRefusalIsNotStoredSoItsKeyRetriesTheWork`
+  and `TestANonStoredRefusalLeavesItsKeyFreeForAnotherRequest` (integration)
+  hold the middleware to it; `TestWriteErrorMarksOnlyTheRetryableRefusalsAsNotStored`
+  and `TestOnlyTheDestinationRefusalIsMarkedNotToBeStored` hold the handler to
+  marking this refusal and nothing else new. What the middleware stores for
+  every other answer is unchanged.
 - The consumed `NodeRegistered` in `apis/asyncapi.yaml` documents `nodeId` and
   `postalCode` as relied on for every node type. `postalCode` is not made
   required there: a registration without one still makes the node known.

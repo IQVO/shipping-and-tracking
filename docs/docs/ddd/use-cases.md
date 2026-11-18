@@ -77,7 +77,7 @@ Source: `internal/application/usecases/labels.go`, `internal/domain/label/label.
   4. Read the ship-to of `orderId` from customer-ordering, before the transaction, and derive the `stopKey` exactly as the outbound label of that order did.
   5. In one transaction: save the label (`purpose: RETURN`, tier `STANDARD`, carrier `RN-GROUND`) and enqueue `LabelIssued`. No journey is started and no snapshot is sealed.
 - **Result:** `201` with the `ReturnLabel`. The attempt is counted once in `shipping.labels.issued`.
-- **Idempotency:** the `Idempotency-Key` replays the first response for 24 hours, a refusal included. A `destination-prefix-unavailable` answered under a key is therefore replayed to that key even after the node fact has arrived; a new key is served (ADR 0018, known cost).
+- **Idempotency:** the `Idempotency-Key` replays the first stored response for 24 hours. `destination-prefix-unavailable` is not stored (like `concurrent-update`; `notStoredUnderKey` in `internal/adapters/inbound/http/response.go`): the same request under the same key is executed again and is served once the node fact has arrived, and that `201` is then what the key replays (ADR 0018).
 
 ## VoidLabel
 
