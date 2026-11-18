@@ -29,6 +29,10 @@ func wantArea(t *testing.T, f Fixture, want repository.AreaMode) {
 	t.Helper()
 	got, err := f.Areas.Get(context.Background(), areaPrefix)
 	noErr(t, err)
+	// No carriers is nil in the memory double and an empty list from Postgres.
+	if len(got.Carriers) == 0 && len(want.Carriers) == 0 {
+		got.Carriers, want.Carriers = nil, nil
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("area = %+v, want %+v", got, want)
 	}
