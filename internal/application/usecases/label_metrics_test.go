@@ -108,6 +108,24 @@ func TestAPickupRefusalIsCountedUnderItsSlug(t *testing.T) {
 	}
 }
 
+// A suspect address is a refusal the caller can act on, counted under its own
+// slug like every other problem of the REST catalogue (ADR 0011): it is not an
+// internal error.
+func TestASuspectAddressIsCountedUnderItsSlug(t *testing.T) {
+	r := newRig(t)
+	m := &recordingMetrics{}
+	r.deps.Metrics = m
+	suspect := sampleAddress()
+	suspect.Name = "Test"
+	suspect.Line1 = "Sample Street" // no house number
+	r.gateway.Put("ord-1", suspect)
+	_, err := usecases.NewIssueLabel(r.deps).Execute(context.Background(), issueCmd("PO-1", 1))
+	wantErr(t, err, shipto.ErrAddressSuspect)
+	if len(m.rejected) != 1 || m.rejected[0] != "address-suspect" || m.issued != 0 {
+		t.Fatalf("issued=%d rejected=%v, want one rejection address-suspect", m.issued, m.rejected)
+	}
+}
+
 // failingUoW fails every unit of work with err.
 type failingUoW struct{ err error }
 
