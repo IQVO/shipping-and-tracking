@@ -5,6 +5,10 @@ metadata:
   name: {{ include "shipping-and-tracking.fullname" . }}
   labels:
     {{- include "shipping-and-tracking.labels" . | nindent 4 }}
+  {{- with include "shipping-and-tracking.kongPluginNames" . }}
+  annotations:
+    konghq.com/plugins: {{ . | quote }}
+  {{- end }}
 spec:
   parentRefs:
     {{- range .Values.gatewayApi.parentRefs }}
