@@ -21,6 +21,10 @@ metadata:
   labels:
     {{- include "shipping-and-tracking.labels" . | nindent 4 }}
     app.kubernetes.io/component: a2a
+  {{- with include "shipping-and-tracking.kongPluginNames" . }}
+  annotations:
+    konghq.com/plugins: {{ . | quote }}
+  {{- end }}
 spec:
   parentRefs:
     {{- range .Values.a2a.route.parentRefs }}
