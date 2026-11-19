@@ -79,3 +79,10 @@ neither. Health and readiness are the only operational endpoints.
   four groups); the boot error tells which one is missing.
 - The sweep period bounds how late an exception can be: a silence window plus at most one period.
 - The `processed_events` retention is a decision, not a model fact; it can be shortened if the table grows.
+
+## Addendum 2026-11-19: what the middleware stores is decided by the replay class
+
+"Responses below 500 are cached, with one exception" in the Idempotency-Key section above is superseded for
+refusals by [ADR 0020](./0020-every-problem-type-has-a-replay-class.md): a 2xx is stored; a refusal is
+stored only when its problem type is `FINAL` or `OUTCOME`; a `RETRYABLE` refusal, a 5xx and a panic are not
+and the key is released. The key's scope, the 24-hour window and the retention above are unchanged.

@@ -38,3 +38,10 @@ is `409`, the replay header is `Idempotency-Replayed`, and every collection is p
 - Breaking for callers of the void route and for anything that read 422 as key reuse. vendor-connectivity
   (POST /labels) is unaffected except for the new problem types. No other repo was found calling the void route.
 - Must deploy together with the REST cutover set of the fleet.
+
+## Addendum 2026-11-19: which refusals are stored
+
+"5xx and `concurrent-update` are not stored" under "Idempotency" above is superseded by
+[ADR 0020](./0020-every-problem-type-has-a-replay-class.md): every problem type has a replay class on its
+catalogue entry, and a refusal is stored (and replayed with `Idempotency-Replayed: true`) only when the class
+is `FINAL` or `OUTCOME`. The fingerprint, the status of the key problems and the replay header are unchanged.
