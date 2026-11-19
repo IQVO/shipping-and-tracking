@@ -23,7 +23,10 @@ info:
     not exposed through the storefront edge. Errors are RFC 9457 problem
     details (application/problem+json) whose type is /problems/<slug>. The
     shared problem types are not-found (404), illegal-transition (409),
-    concurrent-update (409) and validation-failed (422). Optional fields are
+    concurrent-update (409) and validation-failed (422). A POST or PUT retried
+    under the same Idempotency-Key is answered from the store only when its
+    first answer is final for the request; see the Idempotency-Key parameter
+    for the refusals that are not stored. Optional fields are
     omitted when absent, never null. The one exception is the read-only analytics
     reports (tag reports, ADR 0018): served by cmd/co-reports on its own port
     (per-path server) from the separate analytical database, snake_case, with
@@ -92,7 +95,10 @@ paths:
             capacity exhausted (promise-capacity-exhausted), book closed
             (book-closed), a concurrent update (concurrent-update), or the
             Idempotency-Key was already used with a different request
-            (idempotency-key-reused).
+            (idempotency-key-reused). offer-not-quotable is stored under the
+            key (use a new key with the new offers); promise-capacity-exhausted,
+            book-closed and concurrent-update are not stored and release the
+            key (retry with the same key).
           content:
             application/problem+json:
               schema:
@@ -104,7 +110,9 @@ paths:
             that is not registered),
             line-without-promise (ErrLineWithoutPromise),
             promise-destination-mismatch (ErrPromiseDestinationMismatch) or
-            group-spans-nodes from delivery-promise.
+            group-spans-nodes from delivery-promise. line-without-promise is
+            stored under the Idempotency-Key; the others are not (retry with the
+            same key).
           content:
             application/problem+json:
               schema:
@@ -238,6 +246,9 @@ paths:
             cancel-after-lock (ErrCancelAfterLock), status-regression
             (ErrStatusRegression), concurrent-update, or the Idempotency-Key
             was already used with a different request (idempotency-key-reused).
+            status-regression is stored under the key; cancel-after-lock and
+            concurrent-update are not (a locked group can still be cancelled by
+            an event): retry with the same key.
           content:
             application/problem+json:
               schema:
@@ -329,7 +340,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '409':
           description: >-
-            shopper-exists (ErrShopperExists), or the Idempotency-Key was
+            shopper-exists (ErrShopperExists; stored under the Idempotency-Key,
+            the e-mail stays taken), or the Idempotency-Key was
             already used with a different request (idempotency-key-reused).
           content:
             application/problem+json:
@@ -461,7 +473,10 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
-          description: concurrent-update, or the Idempotency-Key was already used with a different request (idempotency-key-reused).
+          description: >-
+            concurrent-update (not stored under the Idempotency-Key: retry with
+            the same key), or the Idempotency-Key was already used with a
+            different request (idempotency-key-reused).
           content:
             application/problem+json:
               schema:
@@ -629,10 +644,21 @@ components:
       description: >-
         Client-generated UUID per logical submit, 1 to 128 printable ASCII
         characters (missing is 400 idempotency-key-required, malformed is 400
-        idempotency-key-invalid). A key is global and kept for 24 hours; the
-        same key with the same method, path and body replays the stored answer
-        with Idempotency-Replayed: true; the same key with anything else is 409
-        idempotency-key-reused.
+        idempotency-key-invalid). A key is global and kept for 24 hours. An
+        answer is stored only when it is final for the request: a success, and a
+        refusal whose problem type is FINAL or OUTCOME (ADR 0019). The same key
+        with the same method, path and body replays a stored answer with
+        Idempotency-Replayed: true; the same key with anything else is 409
+        idempotency-key-reused. A refusal that depends on state that can change
+        is not stored and releases the key, so the same request under the same
+        key runs again, and another request under that key is a new request.
+        These problem types are not stored: not-found, concurrent-update,
+        illegal-transition, cancel-after-lock, validation-failed,
+        promise-capacity-exhausted, book-closed, group-spans-nodes,
+        promise-destination-mismatch and delivery-promise-unavailable (retry with
+        the same key). The others are stored: malformed-request, line-without-promise,
+        status-regression, shopper-exists, too-many-addresses and offer-not-quotable
+        (use a new key). A 5xx and a panic are never stored.
       schema:
         type: string
         minLength: 1
@@ -668,7 +694,7 @@ components:
       schema:
         type: string
     IdempotencyReplayed:
-      description: '"true" when the answer is the stored one of an earlier request with the same Idempotency-Key (a stored 2xx or 4xx answer, replayed with its original status and body); absent on the first execution. A 5xx is never stored.'
+      description: '"true" when the answer is the stored one of an earlier request with the same Idempotency-Key (a stored 2xx or a stored final 4xx answer, replayed with its original status and body); absent on the first execution. A refusal that a retry could pass (a RETRYABLE problem type, see the Idempotency-Key parameter) and a 5xx are never stored.'
       schema:
         type: string
         enum: ['true']
@@ -680,13 +706,13 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     NotFound:
-      description: No order with this id (not-found).
+      description: No order with this id (not-found). Not stored under the Idempotency-Key, because the order may be created by another request; a retry with the same key runs again.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     Unprocessable:
-      description: The body is well-formed JSON but breaks a value-object rule (validation-failed).
+      description: The body is well-formed JSON but breaks a value-object rule, or names a shopper or a saved address that does not exist (validation-failed). Not stored under the Idempotency-Key, so a retry with the same key runs again.
       content:
         application/problem+json:
           schema:
