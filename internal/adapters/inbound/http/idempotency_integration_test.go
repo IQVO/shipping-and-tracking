@@ -37,6 +37,7 @@ func pgServer(t *testing.T) (*httptest.Server, *pgtest.Pool, *memory.ShipToGatew
 	srv := httptest.NewServer(inbound.NewRouter(&inbound.Server{
 		IssueLabel: usecases.NewIssueLabel(d), VoidLabel: usecases.NewVoidLabel(d),
 		RecordScan: usecases.NewRecordScan(d), GetJourney: usecases.NewGetJourney(d),
+		ReportCarrierEvent: usecases.NewReportCarrierEvent(d),
 		Idempotency: func(route string) func(http.Handler) http.Handler {
 			return inbound.RequireIdempotencyKey(pool, pgtx.With, route)
 		},
@@ -122,21 +123,16 @@ func TestIdempotencyKeyIsRequiredBoundedAndGlobal(t *testing.T) {
 	}
 }
 
-func TestA4xxIsCachedAndAnUnavailableShipToIsNot(t *testing.T) {
+// A 5xx is never stored: the key row rolls back with the request and the same
+// key runs the work again once the dependency is back.
+func TestAnUnavailableShipToIsNotStored(t *testing.T) {
 	srv, pool, gw := pgServer(t)
-	body := strings.Replace(issueBody, "ord-1", "ord-9", 1)
-	c1, b1 := post(t, srv, "/labels", "k422", body)
-	c2, b2 := post(t, srv, "/labels", "k422", body)
-	if c1 != 422 || c2 != 422 || b1 != b2 {
-		t.Fatalf("cached 422 = %d %d", c1, c2)
-	}
-
 	gw.Fail(true)
 	if code, _ := post(t, srv, "/labels", "k503", issueBody); code != 503 {
 		t.Fatalf("down = %d", code)
 	}
-	if n := count(t, pool, "idempotency_keys"); n != 1 {
-		t.Fatalf("%d idempotency rows, want only the cached 422", n)
+	if n := count(t, pool, "idempotency_keys"); n != 0 {
+		t.Fatalf("%d idempotency rows after a 503, want none", n)
 	}
 	gw.Fail(false)
 	if code, b := post(t, srv, "/labels", "k503", issueBody); code != 201 {

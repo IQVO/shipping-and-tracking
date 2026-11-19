@@ -25,7 +25,7 @@ The service follows the fleet observability standard (ADR 0008): the pod pushes 
 
 | Instrument | Type | Unit | Attributes | Meaning |
 | --- | --- | --- | --- | --- |
-| `shipping.labels.issued` | Int64Counter (meter `github.com/claudioed/shipping-and-tracking`) | `{label}` | `outcome` = `issued` or `rejected`; `reason` (only when rejected) = the problem slug, for example `ship-to-unavailable`, `label-already-issued`, `internal-error` | Every label-issue attempt by outcome. A falling issued share with rising `ship-to-unavailable` means customer-ordering cannot be reached; rising `label-already-issued` means a caller retries without an `Idempotency-Key`; rising `internal-error` means this service is failing |
+| `shipping.labels.issued` | Int64Counter (meter `github.com/claudioed/shipping-and-tracking`) | `{label}` | `outcome` = `issued` or `rejected`; `reason` (only when rejected) = the problem slug, for example `ship-to-unavailable`, `address-suspect`, `label-already-issued`, `internal-error` | Every label-issue attempt by outcome. A falling issued share with rising `ship-to-unavailable` means customer-ordering cannot be reached; rising `label-already-issued` means a caller retries without an `Idempotency-Key`; rising `internal-error` means this service is failing |
 | HTTP server request duration | Histogram from `otelchi/metric` `NewServerRequestDuration` | per that package | per that package (method, route pattern, status) | One series family per router, on `cmd/api`, `cmd/mcp` and `cmd/a2a` |
 | Go runtime metrics | from `go.opentelemetry.io/contrib/instrumentation/runtime` | per that package | none | Goroutines, GC, heap |
 
