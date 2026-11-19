@@ -60,9 +60,15 @@ var errMissingOutcome = errors.New("idempotency row committed with no recorded o
 //   - The wrapped handler runs with the transaction bound into its context, so
 //     the idempotency row, the aggregates and the outbox rows commit or roll
 //     back together.
-//   - Every response below 500 is cached (4xx included): the same key and body
-//     replays the same answer, a different method, path or body is 409 idempotency-key-reused.
-//     A 5xx or a panic rolls everything back and is never cached.
+//   - A 2xx is stored, and so is a refusal whose problem type is FINAL or OUTCOME
+//     (the replay class of its catalogue entry, ADR 0020): the same key and body
+//     replays the same answer, a different method, path or body is 409
+//     idempotency-key-reused. An OUTCOME refusal commits the handler's writes with
+//     the key row. A RETRYABLE refusal (nothing committed, the answer follows
+//     state that can change), a refusal that carries no class, a 5xx and a panic
+//     roll everything back, key row included, and are never stored: the key is
+//     free, and a different body under it is a new request. The middleware reads
+//     the class and holds no list of slugs.
 func RequireIdempotencyKey(pool *pgxpool.Pool, bind TxBinder, route string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -157,35 +163,6 @@ func copyStoredHeaders(dst http.Header, raw []byte) {
 	}
 }
 
-// capture records the handler's response so it can be persisted and committed
-// BEFORE anything reaches the client.
-type capture struct {
-	header  http.Header
-	code    int
-	body    bytes.Buffer
-	noCache bool
-}
-
-// DoNotCache marks the response as retryable: the middleware rolls the
-// transaction back instead of recording the outcome (a concurrent-update 409
-// must not be replayed to a client that retries with the same key).
-func (c *capture) DoNotCache() { c.noCache = true }
-
-func (c *capture) Header() http.Header { return c.header }
-
-func (c *capture) WriteHeader(code int) {
-	if c.code == 0 {
-		c.code = code
-	}
-}
-
-func (c *capture) Write(b []byte) (int, error) {
-	if c.code == 0 {
-		c.code = http.StatusOK
-	}
-	return c.body.Write(b)
-}
-
 // runFreshRequest handles a genuinely new key: capture the response, persist
 // the outcome in the same transaction, commit, and only then write to the real
 // client.
@@ -195,9 +172,11 @@ func (c *capture) Write(b []byte) (int, error) {
 // leaves the transaction ABORTED even though the handler answers a truthful
 // 4xx. Releasing the savepoint exposes that: the release fails, ROLLBACK TO
 // SAVEPOINT discards the half-done work and heals the transaction, and the 4xx
-// outcome is recorded and committed like any other. A 2xx answer behind a
-// failed release is a lie (its writes are gone), so it rolls everything back
-// and fails the request instead; the same key then retries the real work.
+// outcome is recorded and committed like any other. A 2xx answer, or an
+// OUTCOME refusal, behind a failed release is a lie (the writes it reports
+// are gone), so it rolls everything back and fails the request instead; the
+// same key then retries the real work. A RETRYABLE refusal never gets this
+// far: the transaction is rolled back, key row included (ADR 0020).
 func runFreshRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, tx pgx.Tx, bind TxBinder, key string, next http.Handler) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -215,9 +194,9 @@ func runFreshRequest(ctx context.Context, w http.ResponseWriter, r *http.Request
 	if rec.code == 0 {
 		rec.code = http.StatusOK
 	}
-	if rec.code >= http.StatusInternalServerError || rec.noCache {
-		// A server failure (or a retryable conflict) is never cached: roll everything back so the same
-		// key can retry the real work.
+	if !rec.stored() {
+		// A server failure and a RETRYABLE refusal (ADR 0020) are never stored: roll everything back,
+		// key row included, so the same key can retry the real work.
 		_ = tx.Rollback(ctx)
 		flush(w, rec)
 		return
@@ -232,8 +211,8 @@ func runFreshRequest(ctx context.Context, w http.ResponseWriter, r *http.Request
 			writeError(w, r, err)
 			return
 		}
-		if rec.code < http.StatusBadRequest {
-			// A success whose writes are gone must neither be returned nor cached.
+		if rec.code < http.StatusBadRequest || rec.class == replayOutcome {
+			// A success, or an OUTCOME refusal, whose writes are gone must neither be returned nor cached.
 			_ = tx.Rollback(ctx)
 			writeError(w, r, err)
 			return
