@@ -50,9 +50,9 @@ func once(ctx context.Context, logger *slog.Logger, j Job) {
 	summary, err := j.Run(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
-			logger.ErrorContext(ctx, "scheduled job failed; trying again on the next tick", "job", j.Name, "error", err)
+			logger.ErrorContext(ctx, "scheduled job failed; trying again on the next tick", "job", j.Name, "error", sanitizeErr(err))
 		}
 		return
 	}
-	logger.InfoContext(ctx, "scheduled job finished", "job", j.Name, "result", summary)
+	logger.InfoContext(ctx, "scheduled job finished", "job", j.Name, "result", sanitizeLog(summary))
 }
