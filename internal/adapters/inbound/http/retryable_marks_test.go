@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"testing"
 
+	inbound "github.com/claudioed/shipping-and-tracking/internal/adapters/inbound/http"
 	"github.com/claudioed/shipping-and-tracking/internal/application/repository"
 	"github.com/claudioed/shipping-and-tracking/internal/application/shipto"
 )
 
 // markSpy stands where the Idempotency-Key middleware stands and hands every
-// handler a writer it can mark as not to be stored, exactly as the
-// middleware's own capture does (DoNotCache). It records the mark of the last
+// handler a writer it can mark with a replay class, exactly as the
+// middleware's own capture does (MarkReplay). It records the class of the last
 // request; it stores nothing, so it needs no database.
 type markSpy struct{ marked bool }
 
@@ -20,7 +21,11 @@ type markableWriter struct {
 	spy *markSpy
 }
 
-func (w markableWriter) DoNotCache() { w.spy.marked = true }
+// MarkReplay records whether the refusal is RETRYABLE, the class that releases
+// the key.
+func (w markableWriter) MarkReplay(c inbound.ReplayClass) {
+	w.spy.marked = c == inbound.ReplayRetryable
+}
 
 func (s *markSpy) middleware(string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -31,14 +36,14 @@ func (s *markSpy) middleware(string) func(http.Handler) http.Handler {
 	}
 }
 
-// The handlers mark TWO refusals of the label routes as not to be stored
-// under the Idempotency-Key, the ones the same request passes later:
-// destination-prefix-unavailable, once the node fact has arrived (ADR 0018),
-// and pickup-point-unavailable, once the point is ACTIVE (ADR 0016, addendum
-// of 2026-11-18). Every other answer of these routes - the success, the final
-// refusals, a dependency failure - is left unmarked, to the middleware's own
-// rule.
-func TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored(t *testing.T) {
+// The handlers tell the writer the replay class of each answer (ADR 0020).
+// The refusals the same request passes later are RETRYABLE, so the key is
+// released: destination-prefix-unavailable, once the node fact has arrived
+// (ADR 0018), pickup-point-unavailable, once the point is ACTIVE (ADR 0016),
+// validation-failed (a body that names an order customer-ordering does not
+// know yet) and ship-to-unavailable (a dependency that is not ready). The
+// success and the refusal that is final (label-already-issued) are not.
+func TestOnlyTheRefusalsARequestCanPassLaterAreMarkedRetryable(t *testing.T) {
 	spy := &markSpy{}
 	f := newFixtureWith(t, nil, spy.middleware)
 	if err := f.store.NodeDestinations().Upsert(context.Background(), repository.NodeDestination{NodeID: prefixlessNode}); err != nil {
@@ -54,8 +59,8 @@ func TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored(t *testing.T)
 	}{
 		{"a node this context does not know", "/return-labels", byNode, nil, 409, slugNoPrefix, true},
 		{"a node without a usable prefix", "/return-labels", returnBody("ret-2", `,"destinationNodeId":"`+prefixlessNode+`"`), nil, 409, slugNoPrefix, true},
-		{"both destination forms", "/return-labels", returnBody("ret-3", `,"destinationNodeId":"`+returnsNode+`","destinationPostalPrefix":"01310"`), nil, 422, "validation-failed", false},
-		{"customer-ordering down", "/return-labels", returnBody("ret-4", `,"destinationPostalPrefix":"01310"`), func() { f.gateway.Fail(true) }, 503, "ship-to-unavailable", false},
+		{"both destination forms", "/return-labels", returnBody("ret-3", `,"destinationNodeId":"`+returnsNode+`","destinationPostalPrefix":"01310"`), nil, 422, "validation-failed", true},
+		{"customer-ordering down", "/return-labels", returnBody("ret-4", `,"destinationPostalPrefix":"01310"`), func() { f.gateway.Fail(true) }, 503, "ship-to-unavailable", true},
 		{"the same request once the node fact arrived", "/return-labels", byNode, func() {
 			f.gateway.Fail(false)
 			if err := f.store.NodeDestinations().Upsert(context.Background(),
@@ -88,7 +93,7 @@ func TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored(t *testing.T)
 			t.Fatalf("%s: got %d %s, want %d %s", s.name, r.status, r.body, s.status, s.slug)
 		}
 		if spy.marked != s.marked {
-			t.Errorf("%s (%d %s): marked not-to-store = %v, want %v", s.name, s.status, s.slug, spy.marked, s.marked)
+			t.Errorf("%s (%d %s): marked RETRYABLE = %v, want %v", s.name, s.status, s.slug, spy.marked, s.marked)
 		}
 	}
 }

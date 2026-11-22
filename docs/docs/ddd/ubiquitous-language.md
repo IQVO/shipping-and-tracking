@@ -49,7 +49,7 @@ Source: `internal/domain/journey/types.go`, `internal/domain/journey/journey.go`
 | **ETA window** | The day-of window (at most two hours wide) in which last-mile-delivery expects to reach a package's stop, stated when the route starts. It is not a scan and never changes the state; it is shown only while it is current (`OUT_FOR_DELIVERY` and not older than the last applied scan) | `Journey.AssignEta`, `Journey.EtaCurrent`, event `PackageEtaWindowAssigned` | The promised delivery window of delivery-promise, which it is never clipped to |
 | **Fact** | One observation extracted from a consumed event, one per tracking number | `usecases.Fact`, `usecases.ApplyScans` | A scan, which is the stored form |
 | **Inbox claim** | The `(consumer, event_id)` row that makes a consumer idempotent | `ports.ProcessedEvents`, table `processed_events` | The idempotency key of a REST call |
-| **Idempotency key** | The `Idempotency-Key` header of the three POST routes; the stored answer is replayed for 24 hours | table `idempotency_keys`, `internal/adapters/inbound/http/idempotency.go` | The CloudEvents `id` |
+| **Idempotency key** | The `Idempotency-Key` header of the three POST routes; the stored answer is replayed for 24 hours; a refusal is stored only when its problem type is FINAL or OUTCOME, a RETRYABLE one releases the key (ADR 0020) | table `idempotency_keys`, `internal/adapters/inbound/http/idempotency.go` | The CloudEvents `id` |
 | **Catalog dimensions** | Local, event-fed copy of a catalogue item's title, dimensions, weight and handling flags | `repository.CatalogDimensions`, `ports.CatalogDimensionsView`, table `catalog_dimensions` | The `CatalogItem` aggregate in offer-availability |
 
 ## Neighbour terms used here

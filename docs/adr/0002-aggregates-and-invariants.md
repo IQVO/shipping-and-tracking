@@ -156,3 +156,10 @@ HANDED_OVER`; `PackageDelivered` on `to DELIVERED`; `PackageExceptionRaised`; `P
 - The model's `Err` names appear verbatim as Go errors in `internal/domain/label` and
   `internal/domain/journey` and as problem slugs on the wire.
 - The model gaps this ADR leaves for the orchestrator (A7, A8, A19, A12) are listed in the final report.
+
+## Addendum 2026-11-19: A24 and the replay class
+
+A24 above ("replayed on the same body") holds for a success. For a refusal, whether the answer is replayed or
+the key is released is the replay class of its problem type
+([ADR 0020](./0020-every-problem-type-has-a-replay-class.md)). A key reused with another body answers
+`409 idempotency-key-reused` (ADR 0010), as before.

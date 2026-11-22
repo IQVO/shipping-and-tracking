@@ -228,6 +228,15 @@ two Deployments.
 {{- include "shipping-and-tracking.fullname" . }}-a2a
 {{- end }}
 
+{{/* agents.colocate (warehouse-infra ADR 0012): "true" iff colocate, mcp and a2a are all on; else empty. */}}
+{{- define "shipping-and-tracking.agentsColocated" -}}
+{{- if and (.Values.agents | default dict).colocate .Values.mcp.enabled .Values.a2a.enabled }}true{{ end -}}
+{{- end }}
+
+{{- define "shipping-and-tracking.agentsFullname" -}}
+{{- printf "%s-agents" (include "shipping-and-tracking.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
 {{/*
 Fully qualified names of the analytics read side (ADR 0012): the projector
 Deployment (no Service: it serves only its admin probes) and the reports
@@ -271,4 +280,19 @@ at render instead of crash-looping.
 {{- if not .Values.analytics.projector.consumerGroup -}}
 {{- fail "analytics.projector.consumerGroup is required (ANALYTICS_CONSUMER_GROUP): use the STABLE id shipping-and-tracking-analytics, never the pod name." -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Comma-joined names of this chart's enabled KongPlugins, for the
+konghq.com/plugins annotation on every HTTPRoute this chart renders.
+Empty string (annotation omitted) when none are enabled.
+*/}}
+{{- define "shipping-and-tracking.kongPluginNames" -}}
+{{- $names := list -}}
+{{- range $name, $cfg := .Values.kongPlugins -}}
+{{- if $cfg.enabled -}}
+{{- $names = append $names (printf "%s-%s" (include "shipping-and-tracking.fullname" $) $name) -}}
+{{- end -}}
+{{- end -}}
+{{- join "," $names -}}
 {{- end -}}

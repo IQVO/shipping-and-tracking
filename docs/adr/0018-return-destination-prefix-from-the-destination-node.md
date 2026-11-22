@@ -195,3 +195,13 @@ The same addendum adds a third refusal to the list `notStoredUnderKey` that
 The handler test this ADR names
 `TestOnlyTheDestinationRefusalIsMarkedNotToBeStored` is now
 `TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored`.
+
+## Addendum 2026-11-19: the list `notStoredUnderKey` is the replay class
+
+"The refusal" above names the list `notStoredUnderKey` (`response.go`) and `capture.DoNotCache`. Both are
+replaced by the replay class declared on each catalogue entry ([ADR 0020](./0020-every-problem-type-has-a-replay-class.md)):
+`destination-prefix-unavailable`, `pickup-point-unavailable` and `concurrent-update` are `RETRYABLE`, with
+the behaviour described above unchanged. The sentence "a refusal that is final for the request
+(`label-already-issued`, `validation-failed`) stays stored" is superseded for `validation-failed`: it is
+`RETRYABLE` too (ADR 0020, judgement call 1). `TestOnlyTheRefusalsARequestCanPassLaterAreMarkedNotToBeStored`
+is now `TestOnlyTheRefusalsARequestCanPassLaterAreMarkedRetryable`.

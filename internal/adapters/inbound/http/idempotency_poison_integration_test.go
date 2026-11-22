@@ -13,6 +13,7 @@ import (
 
 	inbound "github.com/claudioed/shipping-and-tracking/internal/adapters/inbound/http"
 	"github.com/claudioed/shipping-and-tracking/internal/adapters/outbound/postgres/pgtx"
+	"github.com/claudioed/shipping-and-tracking/internal/domain/journey"
 	"github.com/claudioed/shipping-and-tracking/internal/testing/pgtest"
 )
 
@@ -54,17 +55,15 @@ func poisonCount(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int 
 	return n
 }
 
-// A mapped 4xx over an aborted transaction is recorded, committed and replayed;
-// the handler never re-runs.
+// A mapped FINAL 4xx over an aborted transaction is recorded, committed and
+// replayed; the handler never re-runs.
 func TestIdempotency_A409FromAnAbortedTransactionCommitsTheOutcome(t *testing.T) {
 	pool := pgtest.NewPool(t)
 	var calls atomic.Int64
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		poisonTx(t, r)
-		w.Header().Set("Content-Type", "application/problem+json")
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"title":"Conflict","status":409}`))
+		inbound.WriteErrorForTest(w, r, journey.ErrJourneyClosed) // FINAL: a 409 that is stored
 	})
 	mw := inbound.RequireIdempotencyKey(pool, pgtx.With, "poison")(handler)
 

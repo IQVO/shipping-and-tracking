@@ -206,7 +206,7 @@ func NodeTopologyHandlers(uc AreaApplier, logger *slog.Logger, noter PointNoter,
 			if err != nil {
 				return err
 			}
-			logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped,
+			logger.InfoContext(ctx, "event processed", "type", sanitizeLog(e.Type()), "event_id", sanitizeLog(e.ID()), "skipped", res.Skipped,
 				"stale", res.Stale, "stored", res.Stored)
 			return nil
 		},

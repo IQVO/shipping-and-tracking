@@ -140,12 +140,12 @@ func TestCaptureRecordsCodeBodyAndDefault(t *testing.T) {
 	if c.body.String() != "body" {
 		t.Errorf("body = %q", c.body.String())
 	}
-	if c.noCache {
-		t.Error("noCache must start false")
+	if c.class != replayUnset {
+		t.Error("a response starts with no replay class")
 	}
-	c.DoNotCache()
-	if !c.noCache {
-		t.Error("DoNotCache must mark the response retryable")
+	c.MarkReplay(replayRetryable)
+	if c.class != replayRetryable {
+		t.Error("MarkReplay must record the class")
 	}
 }
 

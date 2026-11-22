@@ -154,3 +154,11 @@ not wholly A-Z 0-9 (`ErrPointPrefixNotLabellable`, `labellable` in its
 `internal/domain/node/node.go`), so a code with a separator such as
 `07750-000` can only belong to a node of another type, which this view does not
 keep.
+
+## Addendum 2026-11-19: the list `notStoredUnderKey` is the replay class
+
+The third entry of the list `notStoredUnderKey` that "The refusal is not stored under the Idempotency-Key"
+above describes is now the class `RETRYABLE` on the catalogue entry of `pickup-point-unavailable`
+([ADR 0020](./0020-every-problem-type-has-a-replay-class.md)); the list, `capture.DoNotCache` and
+`passesLater` are gone and the behaviour of this refusal is identical. The handler test is now
+`TestOnlyTheRefusalsARequestCanPassLaterAreMarkedRetryable`.
