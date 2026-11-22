@@ -228,6 +228,15 @@ two Deployments.
 {{- include "shipping-and-tracking.fullname" . }}-a2a
 {{- end }}
 
+{{/* agents.colocate (warehouse-infra ADR 0012): "true" iff colocate, mcp and a2a are all on; else empty. */}}
+{{- define "shipping-and-tracking.agentsColocated" -}}
+{{- if and (.Values.agents | default dict).colocate .Values.mcp.enabled .Values.a2a.enabled }}true{{ end -}}
+{{- end }}
+
+{{- define "shipping-and-tracking.agentsFullname" -}}
+{{- printf "%s-agents" (include "shipping-and-tracking.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
 {{/*
 Fully qualified names of the analytics read side (ADR 0012): the projector
 Deployment (no Service: it serves only its admin probes) and the reports
