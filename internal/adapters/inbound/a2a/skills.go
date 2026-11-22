@@ -191,7 +191,7 @@ func problemFromUseCase(ctx context.Context, err error, trackingNumber string) *
 	case errors.Is(err, shared.ErrValidation):
 		return problemValidationFailed("the tracking number is not valid")
 	default:
-		slog.ErrorContext(ctx, "a2a skill failed", "error", err)
+		slog.ErrorContext(ctx, "a2a skill failed", "error", logReplacer.Replace(err.Error()))
 		return problemInternal()
 	}
 }
