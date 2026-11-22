@@ -93,7 +93,7 @@ func flagHandler(flagger PointFlagger, logger *slog.Logger) HandlerFunc {
 		if err != nil {
 			return err
 		}
-		logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped, "applied", res.Applied,
+		logger.InfoContext(ctx, "event processed", "type", sanitizeLog(e.Type()), "event_id", sanitizeLog(e.ID()), "skipped", res.Skipped, "applied", res.Applied,
 			"stale", res.Stale, "closed", res.Closed, "unknown", res.Unknown)
 		return nil
 	}
@@ -122,7 +122,7 @@ func etaHandler(etas EtaApplier, logger *slog.Logger) HandlerFunc {
 		if err != nil {
 			return err
 		}
-		logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped, "applied", res.Applied,
+		logger.InfoContext(ctx, "event processed", "type", sanitizeLog(e.Type()), "event_id", sanitizeLog(e.ID()), "skipped", res.Skipped, "applied", res.Applied,
 			"stale", res.Stale, "closed", res.Closed, "unknown", res.Unknown)
 		return nil
 	}
@@ -171,7 +171,7 @@ func LastMileHandlers(scans ScanApplier, returner Returner, etas EtaApplier, fla
 		if err != nil {
 			return err
 		}
-		logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped,
+		logger.InfoContext(ctx, "event processed", "type", sanitizeLog(e.Type()), "event_id", sanitizeLog(e.ID()), "skipped", res.Skipped,
 			"returned", res.Returned, "unknown", res.Unknown, "closed", res.Closed)
 		return nil
 	}

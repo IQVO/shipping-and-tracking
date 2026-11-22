@@ -124,7 +124,7 @@ func applyScans(ctx context.Context, logger *slog.Logger, uc ScanApplier, consum
 	if err != nil {
 		return err
 	}
-	logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "skipped", res.Skipped, "applied", res.Applied,
+	logger.InfoContext(ctx, "event processed", "type", sanitizeLog(e.Type()), "event_id", sanitizeLog(e.ID()), "skipped", res.Skipped, "applied", res.Applied,
 		"stored", res.Stored, "duplicates", res.Duplicates, "closed", res.Closed, "unknown", res.Unknown)
 	return nil
 }
@@ -247,7 +247,7 @@ func CatalogHandlers(uc CatalogRecorder, logger *slog.Logger) map[string]Handler
 			if err != nil {
 				return err
 			}
-			logger.InfoContext(ctx, "event processed", "type", e.Type(), "event_id", e.ID(), "recorded", recorded)
+			logger.InfoContext(ctx, "event processed", "type", sanitizeLog(e.Type()), "event_id", sanitizeLog(e.ID()), "recorded", recorded)
 			return nil
 		},
 	}
